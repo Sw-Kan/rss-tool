@@ -45,13 +45,36 @@ refresh.refresh_feed(feed)
    ├─ feed_fetch.fetch()            httpx + 条件请求(ETag/Last-Modified) + SSRF 校验
    ├─ feed_parse.parse()            feedparser → ParsedFeed / ParsedEntry
    ├─ classify.entry()              kind / image_url / video_url / image_size
-   └─ upsert articles               按 (feed_id, guid) 去重，只更新内容字段
+   ├─ upsert articles               按 (feed_id, guid) 去重，只更新内容字段
+   └─ extract.extract_pending()     feed 正文过短的文章去原网页抽全文
+```
+
+### 全文抽取（F5）
+
+只在刷新时触发，不在「添加订阅」时触发（否则新增一个源会立刻打十几个网页，接口延迟不可控）。
+
+```
+候选 = 该源最近 200 篇里满足全部条件的前 N 篇（N = EXTRACT_MAX_PER_REFRESH，默认 10）
+        kind == 'article'               图片/视频不需要全文
+        content_source == 'feed'       已抽取的不重复抽
+        extracted_at is null           失败过的不重试
+        url 是 http(s)
+        feed 正文纯文本 < EXTRACT_MIN_CHARS（默认 200）
+   ▼
+feed_fetch.fetch(url, accept=text/html)     复用抓取那套：SSRF 校验 + 重定向复检 + 超时 + 体积上限
+   ▼
+readability-lxml 抽正文容器                 选它而非 trafilatura：需要保留 a/img/h1-h6/ul 结构，
+                                            供前端白名单渲染；trafilatura 会压成单个 <p>
+   ├─ 剔除 nav/aside/footer/header/form/script/style/iframe/noscript/svg/button
+   ├─ 结果纯文本 < EXTRACT_MIN_CHARS → failed，保留 feed 内容
+   └─ 否则替换 content_html、重算 word_count、content_source='extracted'
 ```
 
 关键性质：
 
 - **写权限隔离**：管线只写 `articles` 与 `feeds` 的抓取元数据，永不触碰 `user_item_state`。所以重复刷新不会丢已读/收藏。
-- **失败隔离**：单源失败写 `feeds.last_status/last_error`，不影响其它源；目录刷新用 `asyncio.gather` 限流 5。
+- **抽取不反向覆盖**：`content_source == 'extracted'` 时抓取管线不写 `content_html`/`word_count`，否则下一轮刷新就会把全文换回短摘要。
+- **失败隔离**：单源失败写 `feeds.last_status/last_error`，不影响其它源；目录刷新用 `asyncio.gather` 限流 5。抽取失败只标 `extract_status`，不影响刷新返回值。
 - **共享**：`feeds`/`articles` 与用户无关，同一 URL 全库只抓一次，`subscriptions` 决定谁看得见。
 
 ## 阅读状态
@@ -75,6 +98,6 @@ refresh.refresh_feed(feed)
 
 ## 模块索引
 
-MVP：M0 基础设施 · M1 认证 · M2 订阅管理 · M3 抓取管线 · M4 内容导航 · M5 阅读器 · M6 媒体布局 · M7 阅读状态 · M8 设置 · M9 个人资料 · M10 数据导出。
+MVP：M0 基础设施 · M1 认证 · M2 订阅管理 · M3 抓取管线 · M4 内容导航 · M5 阅读器 · M6 媒体布局 · M7 阅读状态 · M8 设置 · M9 个人资料 · M10 数据导出 · M11 全文抽取。
 
-后续（不实现，见 `docs/roadmap.md`）：F1 AI · F2 集成 · F3 自动化 · F4 代理 · F5 全文抽取 · F6 媒体缓存 · F7 i18n。
+后续（不实现，见 `docs/roadmap.md`）：F1 AI · F2 集成 · F3 自动化 · F4 代理 · F6 媒体缓存 · F7 i18n。

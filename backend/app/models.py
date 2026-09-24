@@ -148,6 +148,10 @@ class Article(Base):
     image_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     video_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     word_count: Mapped[int] = mapped_column(Integer, default=0)
+    # F5 全文抽取：正文来源与尝试结果（只有抓取管线写这几列）
+    content_source: Mapped[str] = mapped_column(String(10), default="feed")
+    extract_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    extracted_at: Mapped[datetime | None] = mapped_column(DateTimeUTC, nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTimeUTC, default=utcnow)
 
     feed: Mapped[Feed] = relationship(back_populates="articles")

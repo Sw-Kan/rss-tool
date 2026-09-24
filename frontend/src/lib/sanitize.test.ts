@@ -47,6 +47,22 @@ describe('sanitizeHtml', () => {
     }
   });
 
+  it('keeps the semantic containers produced by full-text extraction', () => {
+    const out = sanitizeHtml(
+      '<article><h1>标题</h1><p>正文</p><section><time>2024-09-02</time></section></article>',
+    );
+    expect(out).toContain('<article>');
+    expect(out).toContain('<section>');
+    expect(out).toContain('<time>');
+    expect(out).toContain('正文');
+  });
+
+  it('unwraps unknown containers but keeps their text', () => {
+    const out = sanitizeHtml('<custom-widget><p>重要内容</p></custom-widget>');
+    expect(out).toContain('重要内容');
+    expect(out).not.toContain('custom-widget');
+  });
+
   it('handles empty input', () => {
     expect(sanitizeHtml('')).toBe('');
   });

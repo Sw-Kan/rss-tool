@@ -16,6 +16,8 @@ const ALLOWED_TAGS = [
   'a', 'img', 'figure', 'figcaption', 'picture', 'source',
   'video', 'audio',
   'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'caption', 'colgroup', 'col',
+  // 语义容器：feed 正文与 readability 抽取结果都会用到（F5）
+  'article', 'section', 'main', 'time',
 ];
 
 const ALLOWED_ATTR = [

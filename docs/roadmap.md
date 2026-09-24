@@ -6,6 +6,7 @@
 本阶段 UI **不提供不可用的假入口**：设置弹窗内四个 tab 统一渲染「后续版本支持」占位。
 
 做完一个就把对应小节从本文档移到 `AGENTS.md` 的模块表，并同步 `docs/api.md`、`docs/data-model.md`。
+已完成并移出的：**F5 全文抽取 → M11**（见 `docs/architecture.md`）。
 
 ---
 
@@ -70,20 +71,6 @@
 **触发条件**：抓取受限源时。
 
 **已知设计点**：SOCKS5 是否支持；代理与 SSRF 校验的先后顺序（先解析再走代理）。
-
----
-
-## F5 全文抽取
-
-**能力**：feed 只给摘要或正文过短时，抓原网页抽取全文。
-
-**接口**：无新端点，改造抓取管线（新增 `services/extract.py`）
-
-**数据预留**：`articles.content_source`(`feed`|`extracted`)、`articles.extract_status`
-
-**依赖**：抓取管线
-
-**触发条件**：出现大量只有摘要的源时。届时评估 trafilatura，并明确失败回退策略与超时预算。
 
 ---
 

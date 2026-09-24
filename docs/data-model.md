@@ -63,6 +63,9 @@ SQLite，`backend/data/rss.db`。启动时 `create_all`，**无迁移**：表结
 | image_url, image_width, image_height | 瀑布流用；尺寸可能为空 |
 | video_url | |
 | word_count | 中文字符数 + 非中文词数 |
+| content_source | `feed` \| `extracted`，默认 `feed`（F5 写） |
+| extract_status | `null`（未尝试）\| `ok` \| `failed`（F5 写） |
+| extracted_at | 首次（且唯一一次）尝试抽取的时间；非空即不再重试（F5 写） |
 | fetched_at | |
 
 索引：`(feed_id, published_at DESC, id)`、`(kind)`。
@@ -97,6 +100,6 @@ SQLite，`backend/data/rss.db`。启动时 `create_all`，**无迁移**：表结
 - F2 集成：`integrations(user_id, kind, config_json, enabled)`，kind ∈ `rsshub`/`obsidian`/`feishu`/`custom`
 - F3 自动化：`automation_rules(user_id, enabled, trigger, conditions_json, actions_json, position)`
 - F4 代理：`proxy_configs(user_id, mode, http_url, https_url, no_proxy)`
-- F5 全文抽取：`articles.content_source`(`feed`\|`extracted`)、`articles.extract_status`
+- F5 全文抽取：已实现，见 `docs/architecture.md`。
 - F6 媒体缓存：`media_cache(hash, url, path, bytes, fetched_at)`
 - F7 i18n：无新表，`user_settings.language` 解除只读

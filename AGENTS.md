@@ -48,7 +48,8 @@ docs/                 架构、数据模型、API、设计系统、开发流程�
 
 | 数据 | 唯一写入者 |
 |---|---|
-| `articles`、`feeds.etag/modified/last_*` | 抓取管线 |
+| `articles`（除下一行列出的字段）与 `feeds` 的抓取元数据 | 抓取管线 |
+| `articles.content_html`、`word_count`、`content_source`、`extract_status`、`extracted_at` | 全文抽取 |
 | `user_item_state` | 阅读状态模块 |
 | `folders`、`subscriptions` | 订阅管理模块 |
 | `user_settings` | 设置模块 |
@@ -57,10 +58,12 @@ docs/                 架构、数据模型、API、设计系统、开发流程�
 **不变式（不可违反）**
 
 1. 刷新订阅**绝不覆盖**已读/收藏状态。抓取管线不得读写 `user_item_state`。
-2. `feeds` / `articles` 全局共享（同一 URL 只抓一次）；用户数据经 `subscriptions` + `user_item_state` 关联。
-3. 收藏是**虚拟目录**，不落 `folders` 表。
-4. 正文 HTML 必须先经 `sanitizeHtml()` 清洗再渲染。
-5. 抓取用户提供的 URL 前必须过 SSRF 校验（含每次重定向后复检）。
+2. 刷新订阅**绝不用 feed 的短摘要覆盖已抽取的全文**：`content_source == 'extracted'` 时，抓取管线不写 `content_html` / `word_count`。
+3. 抽取失败必须保留 feed 自带内容，绝不写入空正文或半成品。
+4. `feeds` / `articles` 全局共享（同一 URL 只抓一次）；用户数据经 `subscriptions` + `user_item_state` 关联。
+5. 收藏是**虚拟目录**，不落 `folders` 表。
+6. 正文 HTML 必须先经 `sanitizeHtml()` 清洗再渲染。
+7. 抓取用户提供的 URL 前必须过 SSRF 校验（含每次重定向后复检）；仅 `ALLOW_PRIVATE_FETCH=true` 时放行内网地址（自建 RSSHub / 局域网源用）。
 
 ## 5. 代码风格
 
@@ -129,18 +132,21 @@ make lint && make typecheck && make test
 
 外加：涉及 UI 的改动按 `docs/development.md` 的手工验收清单勾选对应条目。
 
-## 11. 本阶段不做（禁止自行扩 scope）
+## 11. 尚未实现（禁止自行扩 scope）
 
 - AI 总结 / 标题翻译（渲染入口也不要留假的）
 - RSSHub / Obsidian / 飞书 / custom export 集成
-- 自动化规则、代理配置、网页全文抽取、图片本地缓存、中英双语
+- 自动化规则、代理配置、图片本地缓存、中英双语
 - Alembic 迁移（表结构变更直接删 `backend/data/rss.db` 重建）
 - 列表虚拟滚动、自动标记已读、多设备同步、Playwright 端到端测试
 
-以上都在 `docs/roadmap.md` 里有边界与触发条件。要做，先改 `docs/roadmap.md` 并把对应模块从"后续"移到"当前"。
+以上都在 `docs/roadmap.md` 里有边界与触发条件。要做，先改 `docs/roadmap.md`、把对应模块从「后续」移到「当前」，并同步本节。
 
 ## 12. 已知限制（不要当 bug 修）
 
+- 正文优先用 feed 自带内容；只有「文章类 + 纯文本短于 `EXTRACT_MIN_CHARS`（默认 200）+ 有原文链接 + 未尝试过」才去原网页抽全文，且每源每轮刷新最多抽 `EXTRACT_MAX_PER_REFRESH` 篇。
+- 全文抽取用 readability-lxml，受其 `MIN_LEN` 启发式影响：**条目文字短于 25 字的列表会被整块丢弃**（`tests/test_extract.py` 有两条用例钉住这个行为）。
+- 抽取失败（含超时）会写 `extracted_at` 且不再重试，避免每轮刷新反复撞同一个坏页面；要强制重试只能删库重建。
 - 侧边栏顶部的搜索图标只做**本地过滤**（对已加载的目录名与源名做子串匹配），不发请求、不搜文章正文。
 - 外链图片可能因防盗链加载失败，以占位图兜底。
 - 单实例、无迁移、无密码找回、无登录限流。

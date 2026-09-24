@@ -159,7 +159,7 @@ async def import_opml(db: Session, user: User, raw: bytes) -> tuple[int, int, li
             db.add(feed)
             db.flush()
             refresh.store_articles(db, feed, loaded.parsed)
-            refresh._mark(feed, "ok", None)
+            refresh.mark_fetched(feed, "ok", None)
             existing_feeds[feed.url] = feed
 
         if feed.id in subscribed:

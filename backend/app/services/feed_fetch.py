@@ -62,22 +62,32 @@ def check_url_allowed(url: str) -> None:
             raise FetchError("出于安全考虑，不允许抓取内网或本机地址")
 
 
-async def fetch(url: str, *, etag: str | None = None, modified: str | None = None) -> FetchResult:
+async def fetch(
+    url: str,
+    *,
+    etag: str | None = None,
+    modified: str | None = None,
+    accept: str | None = None,
+    max_bytes: int | None = None,
+    timeout: float | None = None,
+) -> FetchResult:
     settings = get_settings()
     headers = {
         "User-Agent": settings.fetch_user_agent,
-        "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
+        "Accept": accept
+        or "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
     }
     if etag:
         headers["If-None-Match"] = etag
     if modified:
         headers["If-Modified-Since"] = modified
 
+    limit = max_bytes if max_bytes is not None else settings.fetch_max_bytes
     current = url
     # trust_env=False：不读进程级 HTTP_PROXY/ALL_PROXY 环境变量，保证行为可预测。
     # 代理由后续模块 F4 显式配置（见 docs/roadmap.md）。
     async with httpx.AsyncClient(
-        timeout=settings.fetch_timeout_seconds,
+        timeout=timeout if timeout is not None else settings.fetch_timeout_seconds,
         follow_redirects=False,
         trust_env=False,
     ) as client:
@@ -103,8 +113,8 @@ async def fetch(url: str, *, etag: str | None = None, modified: str | None = Non
                 raise FetchError(f"源返回 HTTP {response.status_code}")
 
             content = response.content
-            if len(content) > settings.fetch_max_bytes:
-                raise FetchError("源响应过大（超过 5MB）")
+            if len(content) > limit:
+                raise FetchError(f"响应过大（超过 {limit // (1024 * 1024)}MB）")
             return FetchResult(
                 content=content,
                 etag=response.headers.get("etag"),

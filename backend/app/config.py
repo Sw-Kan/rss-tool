@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     # 允许抓取内网地址。默认关闭（SSRF 防护）；自建 RSSHub / 局域网 feed 需要打开。
     allow_private_fetch: bool = False
 
+    # F5 全文抽取：feed 正文过短时去原网页抽正文
+    extract_enabled: bool = True
+    # 纯文本短于该字数才值得抓原网页
+    extract_min_chars: int = 200
+    # 每个源每轮刷新最多抽几篇，避免一次打上百个网页
+    extract_max_per_refresh: int = 10
+    extract_concurrency: int = 3
+    extract_timeout_seconds: float = 12.0
+    extract_max_bytes: int = 3 * 1024 * 1024
+
     @property
     def data_path(self) -> Path:
         return (BACKEND_DIR / self.data_dir).resolve()

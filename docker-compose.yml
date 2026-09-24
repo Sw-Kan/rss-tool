@@ -10,6 +10,7 @@ services:
       REFRESH_DEFAULT_MINUTES: ${REFRESH_DEFAULT_MINUTES:-60}
       # 自建 RSSHub / 局域网 feed 需要打开（会放宽 SSRF 防护）
       ALLOW_PRIVATE_FETCH: ${ALLOW_PRIVATE_FETCH:-false}
+      EXTRACT_ENABLED: ${EXTRACT_ENABLED:-true}
     volumes:
       - rss-data:/data
     restart: unless-stopped

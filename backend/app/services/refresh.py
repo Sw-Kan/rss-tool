@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..models import Article, Feed, Folder, Subscription, User
 from ..schemas import RefreshResult
-from . import classify, feed_fetch, feed_parse
+from . import classify, extract, feed_fetch, feed_parse
 from .feed_fetch import FetchError
 
 # 同一源不并发抓取
@@ -93,8 +93,6 @@ def store_articles(db: Session, feed: Feed, parsed: feed_parse.ParsedFeed) -> in
         article.title = entry.title
         article.author = entry.author
         article.channel_name = entry.channel_name or feed.title if result.kind == "video" else None
-        article.summary_html = entry.summary_html
-        article.content_html = entry.content_html or entry.summary_html
         article.published_at = entry.published_at or datetime.now(UTC)
         article.updated_at = entry.updated_at or article.published_at
         article.kind = result.kind
@@ -102,7 +100,13 @@ def store_articles(db: Session, feed: Feed, parsed: feed_parse.ParsedFeed) -> in
         article.image_width = result.image_width
         article.image_height = result.image_height
         article.video_url = result.video_url
-        article.word_count = result.word_count
+
+        # 已抽取的全文不被 feed 的短摘要覆盖（F5）；其余情况照旧更新内容字段。
+        if article.content_source != "extracted":
+            article.summary_html = entry.summary_html
+            article.content_html = entry.content_html or entry.summary_html
+            article.word_count = result.word_count
+            article.content_source = "feed"
         article.fetched_at = datetime.now(UTC)
     return created
 
@@ -113,17 +117,20 @@ async def refresh_feed(db: Session, feed: Feed) -> RefreshResult:
         try:
             loaded = await load_remote(feed.url, etag=feed.etag, modified=feed.modified)
         except FetchError as exc:
-            _mark(feed, "error", str(exc))
+            mark_fetched(feed, "error", str(exc))
             db.commit()
             return RefreshResult(feed_id=feed.id, new_count=0, status="error", error=str(exc))
         except ValueError as exc:
-            _mark(feed, "error", str(exc))
+            mark_fetched(feed, "error", str(exc))
             db.commit()
             return RefreshResult(feed_id=feed.id, new_count=0, status="error", error=str(exc))
 
         if loaded.not_modified:
-            _mark(feed, "not_modified", None)
+            mark_fetched(feed, "not_modified", None)
             db.commit()
+            # 304 也要补正文：文章可能是「添加订阅」时入库的（那条路径不抽取），
+            # 若首次刷新恰好 304，不补就永远补不上。
+            await extract.extract_pending(db, feed.id)
             return RefreshResult(feed_id=feed.id, new_count=0, status="not_modified")
 
         if loaded.parsed.title and not feed.title:
@@ -140,8 +147,11 @@ async def refresh_feed(db: Session, feed: Feed) -> RefreshResult:
         # ponytail: 同步 DB 写入直接跑在事件循环里。单用户本地 SQLite，写入是毫秒级；
         # 若源数量增长到影响响应，再挪进 asyncio.to_thread（注意 session 不能跨线程共享）。
         new_count = store_articles(db, feed, loaded.parsed)
-        _mark(feed, "ok", None)
+        mark_fetched(feed, "ok", None)
         db.commit()
+
+        # F5：feed 正文过短的文章去原网页补齐。任何失败都不影响本次刷新结果。
+        await extract.extract_pending(db, feed.id)
         return RefreshResult(feed_id=feed.id, new_count=new_count, status="ok")
 
 
@@ -179,7 +189,7 @@ async def create_subscription(
         db.add(feed)
         db.flush()
         store_articles(db, feed, loaded.parsed)
-        _mark(feed, "ok", None)
+        mark_fetched(feed, "ok", None)
 
     if folder_id is not None and db.get(Folder, folder_id) is None:
         raise ValueError("目录不存在")
@@ -207,7 +217,7 @@ def _next_position(db: Session, user_id: str) -> int:
     return (last or 0) + 1
 
 
-def _mark(feed: Feed, status: str, error: str | None) -> None:
+def mark_fetched(feed: Feed, status: str, error: str | None) -> None:
     feed.last_status = status
     feed.last_error = error
     feed.last_fetched_at = datetime.now(UTC)

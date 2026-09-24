@@ -34,6 +34,8 @@ make db-reset       # 删除 rss.db 与 uploads/，下次启动重建
 | 前端绕过代理直连 | `frontend/.env.local` 里设 `VITE_API_BASE=http://localhost:8000` |
 | 看调度器是否在跑 | 后端日志里的 `scheduler: user ... 每 N 分钟刷新` |
 | 加自建 RSSHub / 局域网源 | 设 `ALLOW_PRIVATE_FETCH=true` 后重启后端；默认会被 SSRF 防护拒绝 |
+| 看全文抽取效果 | 库里查：`sqlite3 backend/data/rss.db "select extract_status,content_source,count(*) from articles group by 1,2"` |
+| 关掉全文抽取 | 设 `EXTRACT_ENABLED=false`（调试抓取管线时用） |
 
 ## 测试
 
@@ -60,6 +62,8 @@ make typecheck  # tsc --noEmit
 - [ ] 图片页 6 列瀑布流无重叠；视频页宽屏每行 5 个；滚到底自动加载下一页
 - [ ] 标记已读 / 收藏后刷新保持；批量已读后未读计数下降
 - [ ] 正文里的 `<script>` 不执行（用一条含 script 的测试 feed 验证）
+- [ ] 某源只给摘要（RSSHub 之类）时，刷新后正文被补成原网页全文；该源再刷新一次不会退回摘要
+- [ ] 原网页抓取失败（404/超时）时保留 feed 摘要，且下轮刷新不再反复请求同一页面
 - [ ] 导出 OPML 能被第三方阅读器导入，且目录层级保留
 - [ ] 上传 >3MB 或改名的文本文件当头像 → 被拒；首字母头像 5 色可切换
 - [ ] 主题切深色后刷新保持；刷新间隔改为 5 分钟后调度器按新间隔触发

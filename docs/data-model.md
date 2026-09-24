@@ -87,7 +87,7 @@ SQLite，`backend/data/rss.db`。启动时 `create_all`，**无迁移**：表结
 |---|---|---|
 | user_id | | unique |
 | theme | `light` | `light` \| `dark` |
-| language | `zh-CN` | 本阶段只读 |
+| language | `zh-CN` | `zh-CN` \| `en`，可写；同时决定 AI 输出语言 |
 | auto_refresh_enabled | `true` | |
 | refresh_interval_minutes | `60` | 允许 5–1440 |
 | text_style | `comfortable` | `small` \| `comfortable` \| `large` |
@@ -125,4 +125,4 @@ SQLite，`backend/data/rss.db`。启动时 `create_all`，**无迁移**：表结
 - F4 代理：`proxy_configs(user_id, mode, http_url, https_url, no_proxy)`
 - F5 全文抽取：已实现，见 `docs/architecture.md`。
 - F6 媒体缓存：`media_cache(hash, url, path, bytes, fetched_at)`
-- F7 i18n：无新表，`user_settings.language` 解除只读
+- F7 i18n：已实现，无新表，见 `user_settings.language`。

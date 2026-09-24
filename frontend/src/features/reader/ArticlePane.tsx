@@ -31,7 +31,7 @@ import { IconButton } from '../../components/Button';
 import { EmptyState } from '../../components/Field';
 import { absoluteTime, readingMinutes } from '../../lib/format';
 import { sanitizeHtml } from '../../lib/sanitize';
-import { strings } from '../../lib/strings';
+import { useI18n, useT } from '../../lib/i18n';
 import type { ReaderSearch } from '../../types';
 
 interface ArticlePaneProps {
@@ -43,6 +43,8 @@ interface ArticlePaneProps {
 const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
 
 export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
+  const t = useT();
+  const { locale } = useI18n();
   const detail = useItem(itemId);
   const context = useItemContext(itemId, search);
   const setState = useSetItemState();
@@ -86,7 +88,7 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
   if (!itemId) {
     return (
       <div className="flex h-full flex-1 items-center justify-center bg-surface">
-        <EmptyState>从左侧选择一篇文章开始阅读</EmptyState>
+        <EmptyState>{t.article.pick}</EmptyState>
       </div>
     );
   }
@@ -94,7 +96,7 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
   if (detail.isPending) {
     return (
       <div className="flex h-full flex-1 items-center justify-center bg-surface text-sm text-ink-3">
-        {strings.loading}
+        {t.loading}
       </div>
     );
   }
@@ -102,7 +104,7 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
   if (detail.isError || !detail.data) {
     return (
       <div className="flex h-full flex-1 items-center justify-center bg-surface">
-        <EmptyState>{strings.error}</EmptyState>
+        <EmptyState>{t.error}</EmptyState>
       </div>
     );
   }
@@ -121,7 +123,7 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
     const url = item.url ?? window.location.href;
     try {
       await navigator.clipboard.writeText(url);
-      setFlash(strings.article.linkCopied);
+      setFlash(t.article.linkCopied);
     } catch {
       setFlash(url);
     }
@@ -131,10 +133,10 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
     const meta = [
       `# ${item.title}`,
       '',
-      `- 来源：${item.feed_title}`,
-      item.author ? `- 作者：${item.author}` : null,
-      `- 时间：${absoluteTime(item.published_at)}`,
-      item.url ? `- 原文：${item.url}` : null,
+      `- ${t.export.source}：${item.feed_title}`,
+      item.author ? `- ${t.article.author}：${item.author}` : null,
+      `- ${t.export.time}：${absoluteTime(item.published_at, locale)}`,
+      item.url ? `- ${t.export.original}：${item.url}` : null,
       '',
       turndown.turndown(html),
     ]
@@ -152,7 +154,7 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
         {isEssay ? (
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <span className="text-xs text-ink-2">
-              {strings.article.progress(readWords, wordCount)}
+              {t.article.progress(readWords, wordCount)}
             </span>
             <span
               role="progressbar"
@@ -175,7 +177,7 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
           {isEssay ? (
             <>
               <AiButton
-                label={strings.ai.summarize}
+                label={t.ai.summarize}
                 icon={<Sparkles size={14} />}
                 active={Boolean(summary)}
                 busy={generateAi.isPending && generateAi.variables?.kind === 'summary'}
@@ -186,7 +188,7 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
                 }}
               />
               <AiButton
-                label={strings.ai.translate}
+                label={t.ai.translate}
                 icon={<Languages size={14} />}
                 active={Boolean(translatedTitle)}
                 busy={generateAi.isPending && generateAi.variables?.kind === 'title_translation'}
@@ -198,14 +200,14 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
           ) : null}
 
           <IconButton
-            label={item.is_read ? strings.article.markUnread : strings.article.markRead}
+            label={item.is_read ? t.article.markUnread : t.article.markRead}
             active={item.is_read}
             onClick={() => setState.mutate({ id: item.id, is_read: !item.is_read })}
           >
             {item.is_read ? <CheckCircle2 size={16} /> : <Check size={16} />}
           </IconButton>
           <IconButton
-            label={item.is_favorite ? strings.article.unfavorite : strings.article.favorite}
+            label={item.is_favorite ? t.article.unfavorite : t.article.favorite}
             active={item.is_favorite}
             onClick={() => setState.mutate({ id: item.id, is_favorite: !item.is_favorite })}
           >
@@ -215,13 +217,13 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
               <Bookmark size={16} />
             )}
           </IconButton>
-          <IconButton label={strings.article.share} onClick={share}>
+          <IconButton label={t.article.share} onClick={share}>
             <Share2 size={16} />
           </IconButton>
-          <IconButton label={strings.article.exportMarkdown} onClick={exportMarkdown}>
+          <IconButton label={t.article.exportMarkdown} onClick={exportMarkdown}>
             <FileText size={16} />
           </IconButton>
-          <IconButton label={strings.article.exportPdf} onClick={() => window.print()}>
+          <IconButton label={t.article.exportPdf} onClick={() => window.print()}>
             <Download size={16} />
           </IconButton>
         </div>
@@ -241,10 +243,10 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
           <div className="mt-4 flex flex-wrap items-center gap-2 border-b border-line pb-5 text-xs text-ink-2">
             <SourceLogo name={item.feed_title} iconUrl={item.feed_icon_url} size={20} />
             <span className="font-semibold text-ink">{item.feed_title}</span>
-            {item.author ? <span>· {strings.article.author} {item.author}</span> : null}
-            <span>· {absoluteTime(item.published_at)}</span>
+            {item.author ? <span>· {t.article.author} {item.author}</span> : null}
+            <span>· {absoluteTime(item.published_at, locale)}</span>
             {isEssay && wordCount > 0 ? (
-              <span>· {strings.article.minutes.replace('{n}', String(readingMinutes(wordCount)))}</span>
+              <span>· {t.article.minutes.replace('{n}', String(readingMinutes(wordCount, locale)))}</span>
             ) : null}
             {item.url ? (
               <a
@@ -253,7 +255,7 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
                 rel="noopener noreferrer"
                 className="ml-auto text-brand-ink underline underline-offset-2"
               >
-                {strings.article.openOriginal}
+                {t.article.openOriginal}
               </a>
             ) : null}
           </div>
@@ -279,11 +281,11 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
             <section className="mt-6 rounded-xl border border-line bg-page px-4 py-3.5 print:hidden">
               <header className="flex items-center gap-2">
                 <Sparkles size={14} className="text-brand-ink" />
-                <span className="text-sm font-semibold text-ink">{strings.ai.summaryTitle}</span>
+                <span className="text-sm font-semibold text-ink">{t.ai.summaryTitle}</span>
                 <span className="truncate text-2xs text-ink-3">{summary.model}</span>
                 <button
                   type="button"
-                  aria-label="收起 AI 总结"
+                  aria-label={t.ai.collapseSummary}
                   onClick={() => setSummaryOpen(false)}
                   className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-subtle hover:text-ink"
                 >
@@ -298,7 +300,7 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
 
           {isEssay && !summary && summaryOpen && generateAi.isError ? (
             <p className="mt-6 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger-ink print:hidden">
-              {generateAi.error instanceof Error ? generateAi.error.message : strings.error}
+              {generateAi.error instanceof Error ? generateAi.error.message : t.error}
             </p>
           ) : null}
 
@@ -306,7 +308,7 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
 
           <nav className="mt-10 flex items-center justify-between border-t border-line pt-5 print:hidden">
             <IconButton
-              label={strings.article.prev}
+              label={t.article.prev}
               size={36}
               disabled={!context.data?.prev_id}
               onClick={() => {
@@ -322,7 +324,7 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
               {(context.data?.index ?? 0) + 1} / {context.data?.total ?? 1}
             </span>
             <IconButton
-              label={strings.article.next}
+              label={t.article.next}
               size={36}
               disabled={!context.data?.next_id}
               onClick={() => {

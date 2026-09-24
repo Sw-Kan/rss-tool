@@ -12,7 +12,7 @@ import { Button } from '../../components/Button';
 import { Field, TextInput } from '../../components/Field';
 import { Modal } from '../../components/Modal';
 import { AVATAR_COLORS } from '../../lib/format';
-import { strings } from '../../lib/strings';
+import { useT } from '../../lib/i18n';
 import type { User } from '../../types';
 
 const MAX_BYTES = 3 * 1024 * 1024;
@@ -25,6 +25,7 @@ interface ProfileDialogProps {
 }
 
 export function ProfileDialog({ open, onOpenChange, user }: ProfileDialogProps) {
+  const t = useT();
   const [username, setUsername] = useState(user?.username ?? '');
   const [color, setColor] = useState(user?.avatar_color ?? HEX_COLORS[0]);
   const [error, setError] = useState<string | null>(null);
@@ -45,15 +46,15 @@ export function ProfileDialog({ open, onOpenChange, user }: ProfileDialogProps) 
     setError(null);
     if (!file) return;
     if (file.size > MAX_BYTES) {
-      setError(strings.profile.tooLarge);
+      setError(t.profile.tooLarge);
       return;
     }
     if (!/image\/(png|jpe?g)/i.test(file.type)) {
-      setError(strings.profile.badImage);
+      setError(t.profile.badImage);
       return;
     }
     uploadAvatar.mutate(file, {
-      onError: (cause) => setError(cause instanceof Error ? cause.message : strings.error),
+      onError: (cause) => setError(cause instanceof Error ? cause.message : t.error),
     });
   };
 
@@ -61,12 +62,12 @@ export function ProfileDialog({ open, onOpenChange, user }: ProfileDialogProps) 
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title={strings.profile.title}
+      title={t.profile.title}
       width={480}
       footer={
         <>
           <Button variant="outline" className="w-[198px]" onClick={() => onOpenChange(false)}>
-            {strings.cancel}
+            {t.cancel}
           </Button>
           <Button
             variant="solid"
@@ -79,7 +80,7 @@ export function ProfileDialog({ open, onOpenChange, user }: ProfileDialogProps) 
               )
             }
           >
-            {strings.save}
+            {t.save}
           </Button>
         </>
       }
@@ -97,7 +98,7 @@ export function ProfileDialog({ open, onOpenChange, user }: ProfileDialogProps) 
             <button
               key={hex}
               type="button"
-              aria-label={`头像颜色 ${index + 1}`}
+              aria-label={t.profile.colorHint}
               onClick={() => {
                 setColor(hex);
                 updateProfile.mutate({ avatar_color: hex, avatar_type: 'letter' });
@@ -117,7 +118,7 @@ export function ProfileDialog({ open, onOpenChange, user }: ProfileDialogProps) 
             icon={<Upload size={14} />}
             onClick={() => fileInput.current?.click()}
           >
-            {strings.profile.upload}
+            {t.profile.upload}
           </Button>
           <input
             ref={fileInput}
@@ -135,10 +136,10 @@ export function ProfileDialog({ open, onOpenChange, user }: ProfileDialogProps) 
               className="text-xs text-ink-2 underline underline-offset-2"
               onClick={() => deleteAvatar.mutate()}
             >
-              {strings.profile.removeImage}
+              {t.profile.removeImage}
             </button>
           ) : null}
-          <p className="text-2xs text-ink-3">{strings.profile.uploadHint}</p>
+          <p className="text-2xs text-ink-3">{t.profile.uploadHint}</p>
         </div>
 
         {error ? (
@@ -149,7 +150,7 @@ export function ProfileDialog({ open, onOpenChange, user }: ProfileDialogProps) 
       </div>
 
       <div className="mt-5 space-y-4">
-        <Field label={strings.profile.username} hint={strings.profile.colorHint}>
+        <Field label={t.profile.username} hint={t.profile.colorHint}>
           <TextInput
             value={username}
             onChange={(event) => setUsername(event.target.value)}
@@ -157,7 +158,7 @@ export function ProfileDialog({ open, onOpenChange, user }: ProfileDialogProps) 
           />
         </Field>
 
-        <Field label={strings.profile.email} hint={strings.profile.emailLocked}>
+        <Field label={t.profile.email} hint={t.profile.emailLocked}>
           <div className="relative">
             <TextInput value={user?.email ?? ''} readOnly disabled className="pr-9" />
             <Lock
@@ -172,7 +173,7 @@ export function ProfileDialog({ open, onOpenChange, user }: ProfileDialogProps) 
           className="text-xs text-brand-ink underline underline-offset-2"
           onClick={exportUserData}
         >
-          {strings.profile.exportData}
+          {t.profile.exportData}
         </button>
       </div>
     </Modal>

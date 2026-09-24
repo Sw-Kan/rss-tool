@@ -108,28 +108,56 @@ def pick_provider(db: Session, user_id: str) -> AiProvider:
     return provider
 
 
-def build_messages(kind: str, article: Article) -> list[dict[str, str]]:
+# 摘要/翻译的输出语言跟随界面语言（F7）
+_PROMPTS: dict[str, dict[str, str]] = {
+    "zh-CN": {
+        "translate": (
+            "你是翻译助手。把用户给出的标题翻译成简体中文。只输出译文本身，"
+            "不要引号、不要解释、不要保留原文。"
+        ),
+        "summary": (
+            "你是 RSS 阅读助手。用简体中文总结用户给出的文章:\n"
+            "第一行用一句话概括全文；另起一行后用「• 」列出 3-5 条要点。\n"
+            "只输出纯文本（不要 Markdown 语法、不要标题、不要客套话）。"
+        ),
+        "label_title": "标题",
+        "label_body": "正文",
+    },
+    "en": {
+        "translate": (
+            "You are a translation assistant. Translate the given headline into English. "
+            "Output only the translation: no quotes, no explanation, no original text."
+        ),
+        "summary": (
+            "You are an RSS reading assistant. Summarise the given article in English:\n"
+            "first line is a one-sentence gist; then a new line followed by 3-5 bullet "
+            "points each starting with '• '.\n"
+            "Output plain text only: no Markdown syntax, no headings, no pleasantries."
+        ),
+        "label_title": "Title",
+        "label_body": "Body",
+    },
+}
+
+
+def build_messages(kind: str, article: Article, language: str = "zh-CN") -> list[dict[str, str]]:
+    prompts = _PROMPTS.get(language, _PROMPTS["zh-CN"])
+    assert prompts is not None
+
     if kind == TITLE_TRANSLATION:
         return [
-            {
-                "role": "system",
-                "content": "你是翻译助手。把用户给出的标题翻译成简体中文。只输出译文本身，"
-                "不要引号、不要解释、不要保留原文。",
-            },
+            {"role": "system", "content": prompts["translate"]},
             {"role": "user", "content": article.title},
         ]
 
     body = html_to_text(article.content_html or article.summary_html)[:MAX_INPUT_CHARS]
     return [
+        {"role": "system", "content": prompts["summary"]},
         {
-            "role": "system",
-            "content": (
-                "你是 RSS 阅读助手。用简体中文总结用户给出的文章:\n"
-                "第一行用一句话概括全文；另起一行后用「• 」列出 3-5 条要点。\n"
-                "只输出纯文本（不要 Markdown 语法、不要标题、不要客套话）。"
-            ),
+            "role": "user",
+            "content": f"{prompts['label_title']}: {article.title}\n\n"
+            f"{prompts['label_body']}:\n{body}",
         },
-        {"role": "user", "content": f"标题：{article.title}\n\n正文：\n{body}"},
     ]
 
 
@@ -282,7 +310,12 @@ def cached_result(db: Session, user_id: str, article_id: str, kind: str) -> AiRe
 
 
 async def run(
-    db: Session, user: User, article: Article, kind: str, token_limit: int
+    db: Session,
+    user: User,
+    article: Article,
+    kind: str,
+    token_limit: int,
+    language: str = "zh-CN",
 ) -> tuple[AiResult, bool]:
     """返回 (结果行, 是否命中缓存)。"""
     existing = cached_result(db, user.id, article.id, kind)
@@ -293,7 +326,7 @@ async def run(
         raise AiLimitError("本月 AI 用量已达上限，可在「设置 → AI」调整上限")
 
     provider = pick_provider(db, user.id)
-    reply = await complete(provider, build_messages(kind, article))
+    reply = await complete(provider, build_messages(kind, article, language))
 
     row = AiResult(
         user_id=user.id,

@@ -2,6 +2,8 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { useT } from '../lib/i18n';
+
 interface ModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -31,6 +33,8 @@ export function Modal({
   sidebar,
   container,
 }: ModalProps) {
+  const t = useT();
+
   const sidebarSlot = sidebar ? (
     <div className="flex w-60 shrink-0 flex-col bg-page">{sidebar}</div>
   ) : null;
@@ -47,7 +51,7 @@ export function Modal({
           ) : null}
         </div>
         <Dialog.Close
-          aria-label="关闭"
+          aria-label={t.close}
           className="-mt-1 -mr-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-subtle hover:text-ink"
         >
           <X size={16} />

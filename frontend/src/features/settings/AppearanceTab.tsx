@@ -2,27 +2,29 @@ import { Moon, Sun } from 'lucide-react';
 
 import { useSettings, useUpdateSettings } from '../../api/hooks';
 import { Switch } from '../../components/Field';
-import { strings } from '../../lib/strings';
+import { LOCALES, LOCALE_LABELS, useI18n, useT } from '../../lib/i18n';
 import type { TextStyle, Theme } from '../../types';
 
-const THEMES: { id: Theme; label: string; icon: typeof Sun }[] = [
-  { id: 'light', label: strings.settings.themeLight, icon: Sun },
-  { id: 'dark', label: strings.settings.themeDark, icon: Moon },
-];
-
-const TEXT_STYLES: { id: TextStyle; label: string; sample: string }[] = [
-  { id: 'small', label: strings.settings.textSmall, sample: '13.5px' },
-  { id: 'comfortable', label: strings.settings.textComfortable, sample: '14.5px' },
-  { id: 'large', label: strings.settings.textLarge, sample: '16px' },
-];
-
 export function AppearanceTab() {
+  const t = useT();
+  const { locale, setLocale } = useI18n();
   const settings = useSettings();
   const update = useUpdateSettings();
 
   if (!settings.data) {
-    return <p className="text-sm text-ink-3">{strings.loading}</p>;
+    return <p className="text-sm text-ink-3">{t.loading}</p>;
   }
+
+  const themes: { id: Theme; label: string; icon: typeof Sun }[] = [
+    { id: 'light', label: t.settings.themeLight, icon: Sun },
+    { id: 'dark', label: t.settings.themeDark, icon: Moon },
+  ];
+
+  const textStyles: { id: TextStyle; label: string }[] = [
+    { id: 'small', label: t.settings.textSmall },
+    { id: 'comfortable', label: t.settings.textComfortable },
+    { id: 'large', label: t.settings.textLarge },
+  ];
 
   const { theme, text_style, auto_refresh_enabled, refresh_interval_minutes, language } =
     settings.data;
@@ -30,9 +32,9 @@ export function AppearanceTab() {
   return (
     <div className="space-y-7">
       <section>
-        <h3 className="mb-3 text-sm font-semibold text-ink">{strings.settings.theme}</h3>
+        <h3 className="mb-3 text-sm font-semibold text-ink">{t.settings.theme}</h3>
         <div className="flex gap-5">
-          {THEMES.map(({ id, label, icon: Icon }) => {
+          {themes.map(({ id, label, icon: Icon }) => {
             const active = theme === id;
             return (
               <button
@@ -55,27 +57,37 @@ export function AppearanceTab() {
       </section>
 
       <section>
-        <h3 className="mb-3 text-sm font-semibold text-ink">{strings.settings.language}</h3>
+        <h3 className="mb-3 text-sm font-semibold text-ink">{t.settings.language}</h3>
         <div className="inline-flex rounded-lg bg-subtle p-1">
-          <span className="inline-flex h-8 items-center rounded-md bg-surface px-5 text-xs font-semibold text-ink">
-            中文
-          </span>
-          <span
-            title={strings.settings.comingSoon}
-            className="inline-flex h-8 items-center rounded-md px-5 text-xs font-medium text-ink-3"
-          >
-            English
-          </span>
+          {LOCALES.map((option) => {
+            const active = locale === option;
+            return (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  setLocale(option);
+                  if (language !== option) update.mutate({ language: option });
+                }}
+                className={`h-8 rounded-md px-5 text-xs ${
+                  active
+                    ? 'bg-surface font-semibold text-ink'
+                    : 'font-medium text-ink-2 hover:text-ink'
+                }`}
+              >
+                {LOCALE_LABELS[option]}
+              </button>
+            );
+          })}
         </div>
-        <p className="mt-2 text-xs text-ink-3">
-          当前版本固定 {language}；多语言见 docs/roadmap.md（F7）。
-        </p>
+        <p className="mt-2 text-xs text-ink-3">{t.settings.languageHint}</p>
       </section>
 
       <section>
-        <h3 className="mb-3 text-sm font-semibold text-ink">{strings.settings.textStyle}</h3>
+        <h3 className="mb-3 text-sm font-semibold text-ink">{t.settings.textStyle}</h3>
         <div className="inline-flex rounded-lg bg-subtle p-1">
-          {TEXT_STYLES.map(({ id, label }) => {
+          {textStyles.map(({ id, label }) => {
             const active = text_style === id;
             return (
               <button
@@ -99,18 +111,18 @@ export function AppearanceTab() {
       <section className="border-t border-line pt-6">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h3 className="text-sm font-semibold text-ink">{strings.settings.refresh}</h3>
-            <p className="mt-0.5 text-xs text-ink-3">{strings.settings.refreshHint}</p>
+            <h3 className="text-sm font-semibold text-ink">{t.settings.refresh}</h3>
+            <p className="mt-0.5 text-xs text-ink-3">{t.settings.refreshHint}</p>
           </div>
           <Switch
             checked={auto_refresh_enabled}
-            label={strings.settings.refresh}
+            label={t.settings.refresh}
             onChange={(next) => update.mutate({ auto_refresh_enabled: next })}
           />
         </div>
 
         <label className="mt-4 flex items-center gap-3">
-          <span className="text-sm text-ink-2">{strings.settings.refreshInterval}</span>
+          <span className="text-sm text-ink-2">{t.settings.refreshInterval}</span>
           <input
             type="number"
             min={5}

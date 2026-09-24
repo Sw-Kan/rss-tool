@@ -1,6 +1,6 @@
-/** 全部用户可见文案。集中放这里，未来做 i18n 时按命名空间拆。 */
+/** 中文文案包。新增文案先加到这里，再补 en.ts（类型会强制同步）。 */
 
-export const strings = {
+export const zhCN = {
   appName: 'RSS Reader',
   appTagline: '自托管 RSS 阅读器',
   loading: '加载中…',
@@ -10,9 +10,9 @@ export const strings = {
   cancel: '取消',
   save: '保存',
   confirm: '确定',
-  delete: '删除',
-  edit: '编辑',
+  remove: '删除',
   search: '搜索',
+  close: '关闭',
 
   auth: {
     login: '登录',
@@ -37,16 +37,27 @@ export const strings = {
     favoritesItem: '收藏',
     folders: 'RSS 目录',
     ungrouped: '未分组源',
+    ungroupedFallback: '未分组',
     stats: '分组统计',
     newFolder: '新建目录',
     folderName: '目录名',
     emptyFolders: '还没有目录',
+    emptyFolder: '目录为空',
+    noUngrouped: '没有未分组的源',
     searchPlaceholder: '搜索订阅源与文章',
+    expandFolder: '展开目录',
+    collapseFolder: '收起目录',
+    rowActions: '目录操作',
+    rename: '重命名',
+    deleteFolder: '删除目录',
+    folderStats: (folders: number, ungrouped: number) =>
+      `${folders} 目录 · ${ungrouped} 未分组源`,
   },
 
   list: {
     refresh: '刷新',
     markAllRead: '全部标记已读',
+    markAllUnread: '全部标记未读',
     showAll: '全部',
     showUnread: '未读',
     showRead: '已读',
@@ -54,9 +65,11 @@ export const strings = {
     pictureSummary: (count: number, feeds: number) => `${count} 张新图片 · ${feeds} 个源`,
     videoSummary: (count: number, feeds: number) => `${count} 个新视频 · ${feeds} 个频道`,
     favoriteSummary: (count: number) => `${count} 条收藏`,
-    folderSummary: (count: number) => `${count} 篇未读`,
     noMore: '没有更多了',
     refreshDone: (n: number) => (n > 0 ? `已更新 ${n} 篇` : '没有新内容'),
+    resizeSidebar: '调整侧边栏宽度',
+    resizeList: '调整列表宽度',
+    folderFallback: '目录',
   },
 
   article: {
@@ -75,6 +88,21 @@ export const strings = {
     prev: '上一篇',
     next: '下一篇',
     openOriginal: '打开原文',
+    pick: '从左侧选择一篇文章开始阅读',
+  },
+
+  export: {
+    source: '来源',
+    time: '时间',
+    original: '原文',
+  },
+
+  media: {
+    imageFailed: '图片加载失败',
+    noImage: '没有图片',
+    noCover: '没有封面',
+    masonryLayout: '瀑布流布局',
+    gridLayout: '网格布局',
   },
 
   profile: {
@@ -90,7 +118,6 @@ export const strings = {
     menuProfile: '个人资料',
     menuSettings: '设置',
     menuLogout: '退出登录',
-    saved: '已保存',
     tooLarge: '文件不能超过 3MB',
     badImage: '只支持 png / jpg 图片',
   },
@@ -104,6 +131,9 @@ export const strings = {
     tabIntegrations: '集成',
     tabAutomation: '自动化',
     tabProxy: '代理',
+    subtitleIntegrations: 'RSSHub / Obsidian / 飞书',
+    subtitleAutomation: '当 → 如果 → 则 规则',
+    subtitleProxy: 'HTTP / HTTPS / NO_PROXY',
     comingSoon: '后续版本支持',
     comingSoonHint: '该功能已在路线图中，本版本暂未实现。',
     appearanceTitle: '外观',
@@ -112,6 +142,7 @@ export const strings = {
     themeLight: '浅色',
     themeDark: '深色',
     language: '语言',
+    languageHint: '同时决定 AI 总结与翻译的输出语言',
     textStyle: '正文字号',
     textSmall: '小',
     textComfortable: '舒适',
@@ -129,7 +160,7 @@ export const strings = {
     exportRead: '导出阅读数据',
     exportReadHint: '含已读、收藏与阅读进度（JSON）',
     clearData: '清空本地数据',
-    clearDataHint: '删除本机全部订阅与阅读记录',
+    clearDataHint: '删除本机全部账户、订阅与阅读记录',
     clearConfirm: '确认清空全部本地数据？此操作不可撤销，请先做好导出。',
     manage: '管理订阅',
     addFeed: '添加订阅',
@@ -137,22 +168,28 @@ export const strings = {
     deleteSelected: '删除',
     feedUrl: '订阅地址',
     feedTitle: '显示名称',
+    feedTitleHint: '留空则使用源自带标题',
     feedFolder: '目录',
     feedColSource: '源',
     feedColUrl: '地址',
     feedColFolder: '目录',
     feedColStatus: '状态',
     statusEnabled: '已启用',
-    statusPaused: '已暂停',
     statusError: '抓取失败',
     selectAll: '全选',
+    doExport: '导出',
+    doImport: '导入',
+    doClear: '清空',
+    ungroupedOption: '未分组',
     importDone: (imported: number, skipped: number) =>
       skipped > 0 ? `导入 ${imported} 个，跳过 ${skipped} 个` : `导入 ${imported} 个订阅源`,
+    importErrors: (count: number, first: string) => `；有 ${count} 个源抓取失败（${first}）`,
     deleteConfirm: (n: number) => `确认删除选中的 ${n} 个订阅源？`,
     noFeeds: '还没有订阅源，点击「添加订阅」开始',
   },
 
   ai: {
+    subtitle: '供应商、模型与 token 用量',
     providers: '供应商',
     addProvider: '添加供应商',
     fieldUrl: '接口地址 (url)',
@@ -160,21 +197,32 @@ export const strings = {
     fieldModel: '模型',
     keyPlaceholder: '无需密钥',
     noProviders: '还没有 AI 供应商，点「添加供应商」开始',
+    enabledSwitch: (label: string) => `${label} 启用`,
+    providerName: '供应商名称',
+    providerActions: '供应商操作',
+    deleteProvider: '删除供应商',
     deleteConfirm: (label: string) => `删除供应商「${label}」？`,
-    customOption: '自定义',
     usageTitle: 'Token 使用量',
     usageUsed: '本月已用',
     usageTokens: 'tokens',
     usageUnlimited: '不限',
     usageHint: '达到上限后将暂停 AI 总结与翻译',
+    usageCalls: (calls: number, total: string) => `本月 ${calls} 次调用 · 累计 ${total} tokens`,
     limitLabel: '设置上限（tokens）',
     limitPlaceholder: '0 表示不限',
     summarize: 'AI 总结',
     translate: '标题翻译',
-    generating: '生成中…',
     summaryTitle: 'AI 总结',
-    caseTranslation: '标题翻译',
-    cacheHint: '已缓存，不会重复消耗 token',
+    collapseSummary: '收起 AI 总结',
     firstProviderHint: '多个供应商同时开启时，使用列表里第一个。',
   },
 } as const;
+
+/** 值放宽成 string，避免 `as const` 把每种语言钉成互不兼容的字面量类型。 */
+type Widen<T> = T extends string
+  ? string
+  : T extends (...args: infer A) => string
+    ? (...args: A) => string
+    : { [K in keyof T]: Widen<T[K]> };
+
+export type Strings = Widen<typeof zhCN>;

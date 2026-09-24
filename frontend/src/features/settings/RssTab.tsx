@@ -16,10 +16,11 @@ import { SourceLogo } from '../../components/Avatar';
 import { Button } from '../../components/Button';
 import { Badge, EmptyState, Field, Select, TextInput } from '../../components/Field';
 import { Modal } from '../../components/Modal';
-import { strings } from '../../lib/strings';
+import { useT } from '../../lib/i18n';
 import type { Feed } from '../../types';
 
 export function RssTab() {
+  const t = useT();
   const feeds = useFeeds(null);
   const folders = useFolders();
   const importOpml = useImportOpml();
@@ -34,7 +35,7 @@ export function RssTab() {
   const list = feeds.data?.items ?? [];
   const folderList = folders.data?.items ?? [];
   const folderName = (id: string | null) =>
-    folderList.find((folder) => folder.id === id)?.name ?? '未分组';
+    folderList.find((folder) => folder.id === id)?.name ?? t.settings.ungroupedOption;
 
   const toggle = (id: string) =>
     setSelected((previous) => {
@@ -46,7 +47,7 @@ export function RssTab() {
 
   const deleteSelected = () => {
     if (selected.size === 0) return;
-    if (!window.confirm(strings.settings.deleteConfirm(selected.size))) return;
+    if (!window.confirm(t.settings.deleteConfirm(selected.size))) return;
     for (const id of selected) deleteFeed.mutate(id);
     setSelected(new Set());
   };
@@ -54,20 +55,20 @@ export function RssTab() {
   return (
     <div className="space-y-7">
       <section>
-        <h3 className="mb-3 text-sm font-semibold text-ink">{strings.settings.dataManagement}</h3>
+        <h3 className="mb-3 text-sm font-semibold text-ink">{t.settings.dataManagement}</h3>
         <div className="divide-y divide-line rounded-xl border border-line">
           <DataRow
-            title={strings.settings.exportOpml}
-            hint={strings.settings.exportOpmlHint}
+            title={t.settings.exportOpml}
+            hint={t.settings.exportOpmlHint}
             action={
               <Button size="sm" className="w-24" onClick={exportOpml}>
-                导出
+                {t.settings.doExport}
               </Button>
             }
           />
           <DataRow
-            title={strings.settings.importOpml}
-            hint={importResult ?? strings.settings.importOpmlHint}
+            title={t.settings.importOpml}
+            hint={importResult ?? t.settings.importOpmlHint}
             action={
               <Button
                 size="sm"
@@ -75,13 +76,13 @@ export function RssTab() {
                 disabled={importOpml.isPending}
                 onClick={() => fileInput.current?.click()}
               >
-                导入
+                {t.settings.doImport}
               </Button>
             }
           />
           <DataRow
-            title={strings.settings.exportRead}
-            hint={strings.settings.exportReadHint}
+            title={t.settings.exportRead}
+            hint={t.settings.exportReadHint}
             action={
               <Button size="sm" className="w-24" onClick={exportUserData}>
                 导出
@@ -89,8 +90,8 @@ export function RssTab() {
             }
           />
           <DataRow
-            title={strings.settings.clearData}
-            hint={strings.settings.clearDataHint}
+            title={t.settings.clearData}
+            hint={t.settings.clearDataHint}
             action={
               <Button
                 size="sm"
@@ -98,13 +99,13 @@ export function RssTab() {
                 className="w-24"
                 disabled={clearData.isPending}
                 onClick={() => {
-                  if (!window.confirm(strings.settings.clearConfirm)) return;
+                  if (!window.confirm(t.settings.clearConfirm)) return;
                   clearData.mutate(undefined, {
                     onSuccess: () => window.location.assign('/login'),
                   });
                 }}
               >
-                清空
+                {t.settings.doClear}
               </Button>
             }
           />
@@ -122,15 +123,15 @@ export function RssTab() {
             setImportResult(null);
             importOpml.mutate(file, {
               onSuccess: (result) => {
-                const summary = strings.settings.importDone(result.imported, result.skipped);
+                const summary = t.settings.importDone(result.imported, result.skipped);
                 setImportResult(
                   result.errors.length > 0
-                    ? `${summary}；有 ${result.errors.length} 个源抓取失败（${result.errors[0]}）`
+                    ? `${summary}${t.settings.importErrors(result.errors.length, result.errors[0] ?? '')}`
                     : summary,
                 );
               },
               onError: (cause) =>
-                setImportResult(cause instanceof Error ? cause.message : strings.error),
+                setImportResult(cause instanceof Error ? cause.message : t.error),
             });
           }}
         />
@@ -138,7 +139,7 @@ export function RssTab() {
 
       <section>
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-ink">{strings.settings.manage}</h3>
+          <h3 className="text-sm font-semibold text-ink">{t.settings.manage}</h3>
           <div className="flex items-center gap-2">
             <Button
               size="sm"
@@ -146,7 +147,7 @@ export function RssTab() {
               icon={<Plus size={14} />}
               onClick={() => setEditing(blankFeed())}
             >
-              {strings.settings.addFeed}
+              {t.settings.addFeed}
             </Button>
             <Button
               size="sm"
@@ -156,7 +157,7 @@ export function RssTab() {
                 if (target) setEditing(target);
               }}
             >
-              {strings.settings.editFeed}
+              {t.settings.editFeed}
             </Button>
             <Button
               size="sm"
@@ -165,13 +166,13 @@ export function RssTab() {
               disabled={selected.size === 0}
               onClick={deleteSelected}
             >
-              {strings.settings.deleteSelected}
+              {t.settings.deleteSelected}
             </Button>
           </div>
         </div>
 
         {list.length === 0 ? (
-          <EmptyState>{strings.settings.noFeeds}</EmptyState>
+          <EmptyState>{t.settings.noFeeds}</EmptyState>
         ) : (
           <div className="overflow-hidden rounded-xl border border-line">
             <table className="w-full text-left">
@@ -180,7 +181,7 @@ export function RssTab() {
                   <th className="w-10 px-3 py-2.5">
                     <input
                       type="checkbox"
-                      aria-label={strings.settings.selectAll}
+                      aria-label={t.settings.selectAll}
                       checked={selected.size === list.length && list.length > 0}
                       onChange={(event) =>
                         setSelected(
@@ -189,10 +190,10 @@ export function RssTab() {
                       }
                     />
                   </th>
-                  <th className="px-3 py-2.5">{strings.settings.feedColSource}</th>
-                  <th className="px-3 py-2.5">{strings.settings.feedColUrl}</th>
-                  <th className="w-28 px-3 py-2.5">{strings.settings.feedColFolder}</th>
-                  <th className="w-24 px-3 py-2.5">{strings.settings.feedColStatus}</th>
+                  <th className="px-3 py-2.5">{t.settings.feedColSource}</th>
+                  <th className="px-3 py-2.5">{t.settings.feedColUrl}</th>
+                  <th className="w-28 px-3 py-2.5">{t.settings.feedColFolder}</th>
+                  <th className="w-24 px-3 py-2.5">{t.settings.feedColStatus}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
@@ -236,17 +237,18 @@ export function RssTab() {
 }
 
 function StatusBadge({ feed }: { feed: Feed }) {
+  const t = useT();
   if (feed.last_status === 'error') {
     return (
       <span title={feed.last_error ?? ''}>
-        <Badge tone="danger">{strings.settings.statusError}</Badge>
+        <Badge tone="danger">{t.settings.statusError}</Badge>
       </span>
     );
   }
   if (feed.last_status === 'not_modified') {
-    return <Badge tone="success">{strings.settings.statusEnabled}</Badge>;
+    return <Badge tone="success">{t.settings.statusEnabled}</Badge>;
   }
-  return <Badge tone="success">{strings.settings.statusEnabled}</Badge>;
+  return <Badge tone="success">{t.settings.statusEnabled}</Badge>;
 }
 
 function DataRow({ title, hint, action }: { title: string; hint: string; action: ReactNode }) {
@@ -286,6 +288,7 @@ interface FeedDialogProps {
 }
 
 function FeedDialog({ feed, folders, onClose }: FeedDialogProps) {
+  const t = useT();
   const createFeed = useCreateFeed();
   const updateFeed = useUpdateFeed();
 
@@ -299,7 +302,7 @@ function FeedDialog({ feed, folders, onClose }: FeedDialogProps) {
     setError(null);
     if (!feed) return;
     const onError = (cause: unknown) =>
-      setError(cause instanceof Error ? cause.message : strings.error);
+      setError(cause instanceof Error ? cause.message : t.error);
 
     if (isNew) {
       createFeed.mutate(
@@ -325,12 +328,12 @@ function FeedDialog({ feed, folders, onClose }: FeedDialogProps) {
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={isNew ? strings.settings.addFeed : strings.settings.editFeed}
+      title={isNew ? t.settings.addFeed : t.settings.editFeed}
       width={480}
       footer={
         <>
           <Button variant="outline" className="w-[198px]" onClick={onClose}>
-            {strings.cancel}
+            {t.cancel}
           </Button>
           <Button
             variant="solid"
@@ -338,13 +341,13 @@ function FeedDialog({ feed, folders, onClose }: FeedDialogProps) {
             disabled={isNew ? url.trim() === '' : false}
             onClick={submit}
           >
-            {strings.save}
+            {t.save}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label={strings.settings.feedUrl}>
+        <Field label={t.settings.feedUrl}>
           <TextInput
             value={url}
             disabled={!isNew}
@@ -353,15 +356,15 @@ function FeedDialog({ feed, folders, onClose }: FeedDialogProps) {
           />
         </Field>
 
-        <Field label={strings.settings.feedTitle}>
+        <Field label={t.settings.feedTitle}>
           <TextInput
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="留空则使用源自带标题"
+            placeholder={t.settings.feedTitleHint}
           />
         </Field>
 
-        <Field label={strings.settings.feedColFolder}>
+        <Field label={t.settings.feedColFolder}>
           <Select value={folderId} onChange={(event) => setFolderId(event.target.value)}>
             <option value="">未分组</option>
             {folders.map((folder) => (

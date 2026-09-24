@@ -2,7 +2,7 @@ import { Navigate, createBrowserRouter, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 
 import { useMe } from './api/hooks';
-import { strings } from './lib/strings';
+import { zhCN } from './lib/i18n/zh-CN';
 import { LoginPage } from './features/auth/LoginPage';
 import { AppShell } from './features/shell/AppShell';
 import { ReaderPage } from './features/reader/ReaderPage';
@@ -10,7 +10,7 @@ import { ReaderPage } from './features/reader/ReaderPage';
 function Splash() {
   return (
     <div className="flex h-full items-center justify-center text-sm text-ink-3">
-      {strings.loading}
+      {zhCN.loading}
     </div>
   );
 }

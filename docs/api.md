@@ -125,12 +125,13 @@ type SidebarSummaryOut = { by_kind: Record<string, number>; favorites: number;
 | PATCH | `/api/settings` | `{theme?, auto_refresh_enabled?, refresh_interval_minutes?, text_style?}` |
 
 ```ts
-type SettingsOut = { theme: 'light'|'dark'; language: 'zh-CN';
+type SettingsOut = { theme: 'light'|'dark'; language: 'zh-CN'|'en';
                      auto_refresh_enabled: boolean; refresh_interval_minutes: number;
-                     text_style: 'small'|'comfortable'|'large' }
+                     text_style: 'small'|'comfortable'|'large'; ai_token_limit: number }
 ```
 
 `refresh_interval_minutes` 允许 5–1440，越界 422。改动后调度器立即重排。
+`language` 只接受 `zh-CN` / `en`，其它值 422。`ai_token_limit` ≥ 0（0 = 不限）。
 
 ## AI — M12
 

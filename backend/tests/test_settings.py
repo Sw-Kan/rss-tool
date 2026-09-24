@@ -42,9 +42,14 @@ def test_settings_reject_invalid_values(auth_client: TestClient, payload: dict) 
     assert auth_client.patch("/api/settings", json=payload).status_code == 422
 
 
-def test_language_is_read_only(auth_client: TestClient) -> None:
-    auth_client.patch("/api/settings", json={"language": "en-US"})
-    assert auth_client.get("/api/settings").json()["language"] == "zh-CN"
+def test_language_can_be_switched(auth_client: TestClient) -> None:
+    assert auth_client.patch("/api/settings", json={"language": "en"}).json()["language"] == "en"
+    assert auth_client.get("/api/settings").json()["language"] == "en"
+
+
+def test_unsupported_language_is_rejected(auth_client: TestClient) -> None:
+    assert auth_client.patch("/api/settings", json={"language": "en-US"}).status_code == 422
+    assert auth_client.patch("/api/settings", json={"language": "fr"}).status_code == 422
 
 
 @pytest.mark.asyncio

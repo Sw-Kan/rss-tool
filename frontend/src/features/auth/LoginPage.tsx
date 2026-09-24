@@ -6,11 +6,13 @@ import { useState, type FormEvent } from 'react';
 import { useLogin, useRegister, useSkipLogin } from '../../api/hooks';
 import { Button } from '../../components/Button';
 import { Field, TextInput } from '../../components/Field';
-import { strings } from '../../lib/strings';
+import { LOCALE_LABELS, useI18n, useT } from '../../lib/i18n';
 
 type Mode = 'login' | 'signup';
 
 export function LoginPage() {
+  const t = useT();
+  const { locale, setLocale } = useI18n();
   const [mode, setMode] = useState<Mode>('login');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -29,7 +31,7 @@ export function LoginPage() {
     setError(null);
     const onSuccess = () => navigate('/reader', { replace: true });
     const onError = (cause: unknown) =>
-      setError(cause instanceof Error ? cause.message : strings.error);
+      setError(cause instanceof Error ? cause.message : t.error);
 
     if (mode === 'login') {
       login.mutate({ email, password }, { onSuccess, onError });
@@ -40,10 +42,15 @@ export function LoginPage() {
 
   return (
     <div className="relative flex h-full items-center justify-center bg-page">
-      <div className="absolute top-8 right-8 inline-flex h-9 items-center gap-2 rounded-full border border-line bg-surface px-4 text-xs text-ink-2">
+      <button
+        type="button"
+        onClick={() => setLocale(locale === 'zh-CN' ? 'en' : 'zh-CN')}
+        aria-label="Switch language"
+        className="absolute top-8 right-8 inline-flex h-9 items-center gap-2 rounded-full border border-line bg-surface px-4 text-xs text-ink-2 transition-colors hover:bg-subtle hover:text-ink"
+      >
         <Rss size={14} className="text-brand" />
-        中文
-      </div>
+        {LOCALE_LABELS[locale === 'zh-CN' ? 'en' : 'zh-CN']}
+      </button>
 
       <div className="w-[420px] max-w-[calc(100vw-32px)] rounded-xl bg-surface p-7 shadow-[var(--shadow-card)]">
         <div className="mb-6 flex items-center gap-3">
@@ -51,8 +58,8 @@ export function LoginPage() {
             <Rss size={22} />
           </span>
           <span>
-            <span className="block text-2xl font-bold text-ink">{strings.appName}</span>
-            <span className="block text-xs text-ink-3">{strings.appTagline}</span>
+            <span className="block text-2xl font-bold text-ink">{t.appName}</span>
+            <span className="block text-xs text-ink-3">{t.appTagline}</span>
           </span>
         </div>
 
@@ -62,24 +69,24 @@ export function LoginPage() {
               value="login"
               className="h-8 rounded-md text-sm font-semibold text-ink-2 data-[state=active]:bg-surface data-[state=active]:text-ink"
             >
-              {strings.auth.login}
+              {t.auth.login}
             </Tabs.Trigger>
             <Tabs.Trigger
               value="signup"
               className="h-8 rounded-md text-sm font-semibold text-ink-2 data-[state=active]:bg-surface data-[state=active]:text-ink"
             >
-              {strings.auth.signup}
+              {t.auth.signup}
             </Tabs.Trigger>
           </Tabs.List>
 
           <Tabs.Content value={mode} className="outline-none">
             <form onSubmit={submit} className="space-y-4">
             <p className="text-sm text-ink-2">
-              {mode === 'login' ? strings.auth.loginHint : strings.auth.signupHint}
+              {mode === 'login' ? t.auth.loginHint : t.auth.signupHint}
             </p>
 
             {mode === 'signup' ? (
-              <Field label={strings.auth.username}>
+              <Field label={t.auth.username}>
                 <TextInput
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
@@ -90,7 +97,7 @@ export function LoginPage() {
               </Field>
             ) : null}
 
-            <Field label={strings.auth.email}>
+            <Field label={t.auth.email}>
               <div className="relative">
                 <Mail
                   size={15}
@@ -108,7 +115,7 @@ export function LoginPage() {
               </div>
             </Field>
 
-            <Field label={strings.auth.password}>
+            <Field label={t.auth.password}>
               <div className="relative">
                 <Lock
                   size={15}
@@ -132,7 +139,7 @@ export function LoginPage() {
             ) : null}
 
               <Button type="submit" variant="solid" className="w-full" disabled={busy}>
-                {mode === 'login' ? strings.auth.login : strings.auth.signup}
+                {mode === 'login' ? t.auth.login : t.auth.signup}
               </Button>
             </form>
           </Tabs.Content>
@@ -145,14 +152,14 @@ export function LoginPage() {
           onClick={() =>
             skip.mutate(undefined, {
               onSuccess: () => navigate('/reader', { replace: true }),
-              onError: (cause) => setError(cause instanceof Error ? cause.message : strings.error),
+              onError: (cause) => setError(cause instanceof Error ? cause.message : t.error),
             })
           }
         >
-          {strings.auth.skip}
+          {t.auth.skip}
         </Button>
 
-        <p className="mt-4 text-center text-xs text-ink-3">{strings.auth.localNote}</p>
+        <p className="mt-4 text-center text-xs text-ink-3">{t.auth.localNote}</p>
       </div>
     </div>
   );

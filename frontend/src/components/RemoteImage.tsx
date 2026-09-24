@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { swatchFor } from '../lib/format';
+import { useT } from '../lib/i18n';
 
 interface RemoteImageProps {
   src: string;
@@ -27,6 +28,7 @@ export function RemoteImage({
   className = '',
   fallbackSeed,
 }: RemoteImageProps) {
+  const t = useT();
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
 
@@ -41,7 +43,7 @@ export function RemoteImage({
         style={{ aspectRatio: `${ratio}`, background: swatch.bg, color: swatch.ink }}
         className={`flex items-center justify-center text-xs ${className}`}
       >
-        图片加载失败
+        {t.media.imageFailed}
       </div>
     );
   }

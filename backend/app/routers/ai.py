@@ -167,7 +167,9 @@ async def generate(
     assert article is not None
 
     try:
-        row, cached = await ai.run(db, user, article, kind, settings.ai_token_limit)
+        row, cached = await ai.run(
+            db, user, article, kind, settings.ai_token_limit, settings.language
+        )
     except ai.AiLimitError as exc:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     except ai.AiConfigError as exc:

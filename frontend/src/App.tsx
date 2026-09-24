@@ -3,6 +3,7 @@ import { RouterProvider } from 'react-router-dom';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { useState } from 'react';
 
+import { I18nProvider } from './lib/i18n';
 import { router } from './router';
 import { ApiError } from './api/client';
 
@@ -24,9 +25,11 @@ export function App() {
 
   return (
     <QueryClientProvider client={client}>
-      <Tooltip.Provider delayDuration={300}>
-        <RouterProvider router={router} />
-      </Tooltip.Provider>
+      <I18nProvider>
+        <Tooltip.Provider delayDuration={300}>
+          <RouterProvider router={router} />
+        </Tooltip.Provider>
+      </I18nProvider>
     </QueryClientProvider>
   );
 }

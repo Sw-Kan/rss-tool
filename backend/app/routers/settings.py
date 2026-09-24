@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 def _to_out(row: SettingsRow) -> SettingsOut:
     return SettingsOut(
         theme=row.theme,  # type: ignore[arg-type]
-        language=row.language,
+        language=row.language,  # type: ignore[arg-type]
         auto_refresh_enabled=row.auto_refresh_enabled,
         refresh_interval_minutes=row.refresh_interval_minutes,
         text_style=row.text_style,  # type: ignore[arg-type]
@@ -39,6 +39,8 @@ def patch_settings(
         row.refresh_interval_minutes = payload.refresh_interval_minutes
     if payload.text_style is not None:
         row.text_style = payload.text_style
+    if payload.language is not None:
+        row.language = payload.language
     if payload.ai_token_limit is not None:
         row.ai_token_limit = payload.ai_token_limit
 

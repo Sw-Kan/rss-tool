@@ -5,7 +5,7 @@ import { IconButton } from '../../components/Button';
 import { Chip, EmptyState } from '../../components/Field';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
 import { relativeTime } from '../../lib/format';
-import { strings } from '../../lib/strings';
+import { useI18n, useT } from '../../lib/i18n';
 import type { Item, ReaderSearch, ReadState } from '../../types';
 
 interface ItemListProps {
@@ -35,6 +35,8 @@ export function ItemList({
   onLoadMore,
   listWidth,
 }: ItemListProps) {
+  const t = useT();
+  const { locale } = useI18n();
   const sentinel = useInfiniteScroll(onLoadMore, { enabled: hasMore && !loadingMore });
 
   const refresh = useRefreshAll();
@@ -56,21 +58,21 @@ export function ItemList({
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
             <IconButton
-              label={strings.list.refresh}
+              label={t.list.refresh}
               onClick={() => refresh.mutate(search.folder === 'ungrouped' ? null : search.folder)}
               disabled={refresh.isPending}
             >
               <RefreshCw size={15} className={refresh.isPending ? 'animate-spin' : ''} />
             </IconButton>
             <IconButton
-              label={strings.list.markAllRead}
+              label={t.list.markAllRead}
               disabled={unreadIds.length === 0 || bulkRead.isPending}
               onClick={() => bulkRead.mutate({ ids: unreadIds, is_read: true })}
             >
               <Eye size={15} />
             </IconButton>
             <IconButton
-              label="全部标记未读"
+              label={t.list.markAllUnread}
               disabled={readIds.length === 0 || bulkRead.isPending}
               onClick={() => bulkRead.mutate({ ids: readIds, is_read: false })}
             >
@@ -83,17 +85,17 @@ export function ItemList({
           {(['all', 'unread', 'read'] as ReadState[]).map((state) => (
             <Chip key={state} active={search.state === state} onClick={() => onState(state)}>
               {state === 'all'
-                ? strings.list.showAll
+                ? t.list.showAll
                 : state === 'unread'
-                  ? strings.list.showUnread
-                  : strings.list.showRead}
+                  ? t.list.showUnread
+                  : t.list.showRead}
             </Chip>
           ))}
         </div>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-        {items.length === 0 ? <EmptyState>{strings.empty}</EmptyState> : null}
+        {items.length === 0 ? <EmptyState>{t.empty}</EmptyState> : null}
 
         <ul className="space-y-1">
           {items.map((item) => {
@@ -117,7 +119,7 @@ export function ItemList({
                       {item.feed_title}
                     </span>
                     <span className="shrink-0 text-2xs text-ink-3">
-                      {relativeTime(item.published_at)}
+                      {relativeTime(item.published_at, locale)}
                     </span>
                   </span>
 
@@ -145,9 +147,9 @@ export function ItemList({
 
         <div ref={sentinel} className="h-1" />
         {hasMore ? (
-          <p className="py-3 text-center text-xs text-ink-3">{strings.loading}</p>
+          <p className="py-3 text-center text-xs text-ink-3">{t.loading}</p>
         ) : items.length > 0 ? (
-          <p className="py-3 text-center text-xs text-ink-3">{strings.list.noMore}</p>
+          <p className="py-3 text-center text-xs text-ink-3">{t.list.noMore}</p>
         ) : null}
       </div>
     </section>

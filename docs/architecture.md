@@ -101,6 +101,20 @@ readability-lxml 抽正文容器                 选它而非 trafilatura：需�
 - `ai_results` 同时是缓存与用量账本，`/api/ai/usage` 直接按月聚合这张表，不另开计数表。
 - AI 的 `base_url` 是用户自己填的配置，**不做内网拦截**；这与 feed 侧 URL 必须过 SSRF 校验是两回事。
 
+## 国际化（F7）
+
+```
+src/lib/i18n/zh-CN.ts   中文包（源语言，`Strings` 类型的来源）
+src/lib/i18n/en.ts      English bundle，类型是 `Strings` → 漏翻一个 key 就编译不过
+src/lib/i18n/index.tsx  LOCALES / detectLocale / bundles / I18nProvider / useT
+```
+
+- 组件只调 `useT()` 拿文案，调 `useI18n().locale` 拿语言（给 `Intl` 与格式化用）。
+- 语言来源：登录前 localStorage → 浏览器语言 → `zh-CN`；登录后 `AppShell` 用 `user_settings.language` 覆盖。
+- 日期/数字/阅读速度全走 `Intl`（`lib/format.ts`），不自己拼月份名。
+- 没有引入 i18n 库：文案规模用不上 ICU 复数与命名空间加载，`Intl` 已经覆盖了唯一真正需要运行时能力的部分。
+- `I18nProvider` 的默认值是中文包，所以单测里不套 Provider 也能渲染。
+
 ## 阅读状态
 
 `user_item_state` 是 `(user_id, article_id)` 的稀疏表：没行 = 未读未收藏。列表查询 left join 后归一为 `is_read/is_favorite` 布尔值返回。
@@ -122,6 +136,6 @@ readability-lxml 抽正文容器                 选它而非 trafilatura：需�
 
 ## 模块索引
 
-已成模块：M0 基础设施 · M1 认证 · M2 订阅管理 · M3 抓取管线 · M4 内容导航 · M5 阅读器 · M6 媒体布局 · M7 阅读状态 · M8 设置 · M9 个人资料 · M10 数据导出 · M11 全文抽取 · M12 AI 助手。
+已成模块：M0 基础设施 · M1 认证 · M2 订阅管理 · M3 抓取管线 · M4 内容导航 · M5 阅读器 · M6 媒体布局 · M7 阅读状态 · M8 设置 · M9 个人资料 · M10 数据导出 · M11 全文抽取 · M12 AI 助手 · M13 国际化。
 
-尚未实现（见 `docs/roadmap.md`）：F2 集成 · F3 自动化 · F4 代理 · F6 媒体缓存 · F7 i18n。
+尚未实现（见 `docs/roadmap.md`）：F2 集成 · F3 自动化 · F4 代理 · F6 媒体缓存。

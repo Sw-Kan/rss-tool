@@ -74,7 +74,7 @@ docs/                 架构、数据模型、API、设计系统、开发流程�
 - 组件函数式 + hooks；文件内组件用 `export function`，不用 `default export`（路由懒加载入口除外）。
 - 服务端状态一律走 TanStack Query，不自己写 `useEffect` 取数。
 - 布尔/可选值显式处理，禁止 `!` 非空断言（除非紧跟长度检查）。
-- 文案集中在 `src/lib/strings.ts`，不散落硬编码中文。
+- 文案一律走 `useT()`（`src/lib/i18n/`），**不在组件里硬编码任何语言的字符串**，包括 `aria-label` 与 `title`。新增文案先加 `zh-CN.ts`，`en.ts` 的类型会强制同步。
 
 **Python**
 - 行宽 100（ruff format 默认）；函数签名与返回值必须有类型注解；禁止裸 `except`。
@@ -137,12 +137,12 @@ make lint && make typecheck && make test
 ## 11. 尚未实现（禁止自行扩 scope）
 
 - RSSHub / Obsidian / 飞书 / custom export 集成
-- 自动化规则、代理配置、图片本地缓存、中英双语
+- 自动化规则、代理配置、图片本地缓存
 - Alembic 迁移（表结构变更直接删 `backend/data/rss.db` 重建）
 - 列表虚拟滚动、自动标记已读、多设备同步、Playwright 端到端测试
 
 以上都在 `docs/roadmap.md` 里有边界与触发条件。要做，先改 `docs/roadmap.md`、把对应模块从「后续」移到「当前」，并同步本节。
-已完成并移出的：**F5 全文抽取 → M11**（`services/extract.py`）、**F1 AI 助手 → M12**（`services/ai.py`）。
+已完成并移出的：**F5 全文抽取 → M11**（`services/extract.py`）、**F1 AI 助手 → M12**（`services/ai.py`）、**F7 中英双语 → M13**（`src/lib/i18n/`）。
 
 ## 12. 已知限制（不要当 bug 修）
 
@@ -154,4 +154,7 @@ make lint && make typecheck && make test
 - 外链图片可能因防盗链加载失败，以占位图兜底。
 - AI：`api_key` 明文存 SQLite（本地单实例、库本身未加密，额外加密只是摆设）；不做流式输出；上游失败不写 `ai_results`，也不自动重试（用户点一次就调一次）；上游未返回 usage 时 token 记 0。
 - AI：多个供应商同时开启时只用列表里第一个（按 `position`）。
+- 界面语言只有 `zh-CN` / `en` 两种；不引入 i18n 库（几百条文案用不上 ICU 复数规则），日期与数字走 `Intl`。
+- 语言来源：登录前用 localStorage / 浏览器语言，登录后以 `user_settings.language` 为准；切换语言时 `document.documentElement.lang` 同步更新。
+- AI 输出语言跟随界面语言（`services/ai.py` 的 `_PROMPTS`）；已缓存的总结不会因为切语言而重新生成，要换语言得清掉 `ai_results` 对应行。
 - 单实例、无迁移、无密码找回、无登录限流。

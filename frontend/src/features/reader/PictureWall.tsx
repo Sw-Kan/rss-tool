@@ -8,7 +8,7 @@ import { EmptyState } from '../../components/Field';
 import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
 import { relativeTime } from '../../lib/format';
 import { columnCount, distribute, estimateAspect, groupByColumn } from '../../lib/masonry';
-import { strings } from '../../lib/strings';
+import { useI18n, useT } from '../../lib/i18n';
 import type { Item, ReaderSearch } from '../../types';
 
 interface PictureWallProps {
@@ -33,6 +33,8 @@ export function PictureWall({
   loadingMore,
   onLoadMore,
 }: PictureWallProps) {
+  const t = useT();
+  const { locale } = useI18n();
   const surface = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   const sentinel = useInfiniteScroll(onLoadMore, { enabled: hasMore && !loadingMore });
@@ -68,19 +70,19 @@ export function PictureWall({
           <p className="mt-0.5 text-2xs text-ink-3">{subtitle}</p>
         </div>
         <IconButton
-          label={strings.list.refresh}
+          label={t.list.refresh}
           disabled={refresh.isPending}
           onClick={() => refresh.mutate(search.folder === 'ungrouped' ? null : search.folder)}
         >
           <RefreshCw size={15} className={refresh.isPending ? 'animate-spin' : ''} />
         </IconButton>
-        <IconButton label="瀑布流布局" active>
+        <IconButton label={t.media.masonryLayout} active>
           <LayoutGrid size={15} />
         </IconButton>
       </header>
 
       <div ref={surface} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        {items.length === 0 ? <EmptyState>{strings.empty}</EmptyState> : null}
+        {items.length === 0 ? <EmptyState>{t.empty}</EmptyState> : null}
 
         <div className="flex items-start" style={{ gap: GAP }}>
           {buckets.map((column, columnIndex) => (
@@ -98,7 +100,7 @@ export function PictureWall({
                     />
                   ) : (
                     <div className="flex aspect-[4/3] items-center justify-center rounded-lg bg-subtle text-xs text-ink-3">
-                      没有图片
+                      {t.media.noImage}
                     </div>
                   )}
                   <figcaption className="mt-2">
@@ -111,7 +113,7 @@ export function PictureWall({
                       {item.title}
                     </a>
                     <p className="mt-0.5 text-2xs text-ink-3">
-                      {relativeTime(item.published_at)}
+                      {relativeTime(item.published_at, locale)}
                     </p>
                   </figcaption>
                 </figure>
@@ -122,9 +124,9 @@ export function PictureWall({
 
         <div ref={sentinel} className="h-1" />
         {hasMore ? (
-          <p className="py-4 text-center text-xs text-ink-3">{strings.loading}</p>
+          <p className="py-4 text-center text-xs text-ink-3">{t.loading}</p>
         ) : items.length > 0 ? (
-          <p className="py-4 text-center text-xs text-ink-3">{strings.list.noMore}</p>
+          <p className="py-4 text-center text-xs text-ink-3">{t.list.noMore}</p>
         ) : null}
       </div>
     </div>

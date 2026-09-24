@@ -12,6 +12,7 @@ AvatarType = Literal["letter", "image"]
 Theme = Literal["light", "dark"]
 TextStyle = Literal["small", "comfortable", "large"]
 ReadState = Literal["all", "unread", "read"]
+Language = Literal["zh-CN", "en"]
 
 
 class ORMModel(BaseModel):
@@ -205,7 +206,7 @@ class SidebarSummaryOut(BaseModel):
 
 class SettingsOut(BaseModel):
     theme: Theme
-    language: str
+    language: Language
     auto_refresh_enabled: bool
     refresh_interval_minutes: int
     text_style: TextStyle
@@ -217,6 +218,8 @@ class SettingsPatch(BaseModel):
     auto_refresh_enabled: bool | None = None
     refresh_interval_minutes: int | None = Field(default=None, ge=5, le=1440)
     text_style: TextStyle | None = None
+    # F7：界面语言，同时决定 AI 输出的语言
+    language: Language | None = None
     # F1：每月 AI token 上限，0 = 不限
     ai_token_limit: int | None = Field(default=None, ge=0, le=1_000_000_000)
 

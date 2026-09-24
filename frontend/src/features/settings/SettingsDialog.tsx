@@ -2,7 +2,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { Globe, Palette, Plug, Rss, Sparkles, Zap, type LucideIcon } from 'lucide-react';
 
 import { Modal } from '../../components/Modal';
-import { strings } from '../../lib/strings';
+import { useT } from '../../lib/i18n';
 import { AiTab } from './AiTab';
 import { AppearanceTab } from './AppearanceTab';
 import { PlaceholderTab } from './PlaceholderTab';
@@ -19,27 +19,6 @@ export const SETTINGS_TABS = [
 
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
 
-const TAB_META: { id: SettingsTab; label: string; icon: LucideIcon }[] = [
-  { id: 'appearance', label: strings.settings.tabAppearance, icon: Palette },
-  { id: 'rss', label: strings.settings.tabRss, icon: Rss },
-  { id: 'ai', label: strings.settings.tabAi, icon: Sparkles },
-  { id: 'integrations', label: strings.settings.tabIntegrations, icon: Plug },
-  { id: 'automation', label: strings.settings.tabAutomation, icon: Zap },
-  { id: 'proxy', label: strings.settings.tabProxy, icon: Globe },
-];
-
-const TITLES: Record<SettingsTab, { title: string; subtitle: string }> = {
-  appearance: {
-    title: strings.settings.appearanceTitle,
-    subtitle: strings.settings.appearanceSubtitle,
-  },
-  rss: { title: strings.settings.rssTitle, subtitle: strings.settings.rssSubtitle },
-  ai: { title: strings.settings.tabAi, subtitle: '供应商、模型与 token 用量' },
-  integrations: { title: strings.settings.tabIntegrations, subtitle: 'RSSHub / Obsidian / 飞书' },
-  automation: { title: strings.settings.tabAutomation, subtitle: '当 → 如果 → 则 规则' },
-  proxy: { title: strings.settings.tabProxy, subtitle: 'HTTP / HTTPS / NO_PROXY' },
-};
-
 interface SettingsDialogProps {
   open: boolean;
   activeTab: SettingsTab;
@@ -53,7 +32,33 @@ export function SettingsDialog({
   onTabChange,
   onOpenChange,
 }: SettingsDialogProps) {
-  const { title, subtitle } = TITLES[activeTab];
+  const t = useT();
+
+  const tabMeta: { id: SettingsTab; label: string; icon: LucideIcon }[] = [
+    { id: 'appearance', label: t.settings.tabAppearance, icon: Palette },
+    { id: 'rss', label: t.settings.tabRss, icon: Rss },
+    { id: 'ai', label: t.settings.tabAi, icon: Sparkles },
+    { id: 'integrations', label: t.settings.tabIntegrations, icon: Plug },
+    { id: 'automation', label: t.settings.tabAutomation, icon: Zap },
+    { id: 'proxy', label: t.settings.tabProxy, icon: Globe },
+  ];
+
+  const titles: Record<SettingsTab, { title: string; subtitle: string }> = {
+    appearance: {
+      title: t.settings.appearanceTitle,
+      subtitle: t.settings.appearanceSubtitle,
+    },
+    rss: { title: t.settings.rssTitle, subtitle: t.settings.rssSubtitle },
+    ai: { title: t.settings.tabAi, subtitle: t.ai.subtitle },
+    integrations: {
+      title: t.settings.tabIntegrations,
+      subtitle: t.settings.subtitleIntegrations,
+    },
+    automation: { title: t.settings.tabAutomation, subtitle: t.settings.subtitleAutomation },
+    proxy: { title: t.settings.tabProxy, subtitle: t.settings.subtitleProxy },
+  };
+
+  const { title, subtitle } = titles[activeTab];
 
   return (
     <Modal
@@ -76,11 +81,11 @@ export function SettingsDialog({
       sidebar={
         <>
           <div className="px-6 pt-6 pb-4">
-            <p className="text-xl font-bold text-ink">{strings.settings.title}</p>
-            <p className="mt-0.5 text-xs text-ink-3">{strings.settings.subtitle}</p>
+            <p className="text-xl font-bold text-ink">{t.settings.title}</p>
+            <p className="mt-0.5 text-xs text-ink-3">{t.settings.subtitle}</p>
           </div>
           <Tabs.List className="flex flex-col gap-1 px-4">
-            {TAB_META.map(({ id, label, icon: Icon }) => (
+            {tabMeta.map(({ id, label, icon: Icon }) => (
               <Tabs.Trigger
                 key={id}
                 value={id}

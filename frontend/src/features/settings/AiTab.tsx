@@ -14,10 +14,12 @@ import {
 import { Button } from '../../components/Button';
 import { MiniField, Switch } from '../../components/Field';
 import { thousands } from '../../lib/format';
-import { strings } from '../../lib/strings';
+import { useI18n, useT } from '../../lib/i18n';
 import type { AiProvider } from '../../types';
 
 export function AiTab() {
+  const t = useT();
+  const { locale } = useI18n();
   const config = useAiConfig();
   const usage = useAiUsage();
   const presets = useAiPresets();
@@ -37,7 +39,7 @@ export function AiTab() {
     <div className="space-y-7">
       <section>
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-ink">{strings.ai.providers}</h3>
+          <h3 className="text-sm font-semibold text-ink">{t.ai.providers}</h3>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <Button
@@ -46,7 +48,7 @@ export function AiTab() {
                 icon={<Plus size={14} />}
                 disabled={createProvider.isPending}
               >
-                {strings.ai.addProvider}
+                {t.ai.addProvider}
               </Button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
@@ -71,7 +73,7 @@ export function AiTab() {
 
         {providers.length === 0 ? (
           <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-xs text-ink-3">
-            {strings.ai.noProviders}
+            {t.ai.noProviders}
           </p>
         ) : null}
 
@@ -82,7 +84,7 @@ export function AiTab() {
               provider={provider}
               onPatch={(patch) => updateProvider.mutate({ id: provider.id, ...patch })}
               onDelete={() => {
-                if (window.confirm(strings.ai.deleteConfirm(provider.label))) {
+                if (window.confirm(t.ai.deleteConfirm(provider.label))) {
                   deleteProvider.mutate(provider.id);
                 }
               }}
@@ -91,23 +93,23 @@ export function AiTab() {
         </div>
 
         {providers.filter((provider) => provider.enabled).length > 1 ? (
-          <p className="mt-2 text-2xs text-ink-3">{strings.ai.firstProviderHint}</p>
+          <p className="mt-2 text-2xs text-ink-3">{t.ai.firstProviderHint}</p>
         ) : null}
       </section>
 
       <section>
-        <h3 className="mb-3 text-sm font-semibold text-ink">{strings.ai.usageTitle}</h3>
+        <h3 className="mb-3 text-sm font-semibold text-ink">{t.ai.usageTitle}</h3>
         <div className="grid grid-cols-[1fr_200px] gap-6 rounded-xl border border-line bg-page px-4 py-4">
           <div className="min-w-0">
             <p className="text-sm font-medium text-ink">
-              {strings.ai.usageUsed} <span className="font-semibold">{thousands(used)}</span>
+              {t.ai.usageUsed} <span className="font-semibold">{thousands(used, locale)}</span>
               {' / '}
               {limit > 0 ? (
-                <span className="font-semibold">{thousands(limit)}</span>
+                <span className="font-semibold">{thousands(limit, locale)}</span>
               ) : (
-                strings.ai.usageUnlimited
+                t.ai.usageUnlimited
               )}{' '}
-              {strings.ai.usageTokens}
+              {t.ai.usageTokens}
             </p>
             <span className="mt-3 block h-1.5 w-full max-w-[400px] overflow-hidden rounded-full bg-line">
               <span
@@ -115,17 +117,17 @@ export function AiTab() {
                 style={{ width: `${Math.round(ratio * 100)}%` }}
               />
             </span>
-            <p className="mt-2 text-2xs text-ink-3">{strings.ai.usageHint}</p>
+            <p className="mt-2 text-2xs text-ink-3">{t.ai.usageHint}</p>
           </div>
 
           <label className="block">
-            <span className="mb-1.5 block text-2xs text-ink-3">{strings.ai.limitLabel}</span>
+            <span className="mb-1.5 block text-2xs text-ink-3">{t.ai.limitLabel}</span>
             <input
               type="number"
               min={0}
               inputMode="numeric"
               value={limitDraft ?? (limit > 0 ? String(limit) : '')}
-              placeholder={strings.ai.limitPlaceholder}
+              placeholder={t.ai.limitPlaceholder}
               onChange={(event) => setLimitDraft(event.target.value)}
               onBlur={() => {
                 if (limitDraft === null) return;
@@ -143,7 +145,7 @@ export function AiTab() {
 
         {usage.data && usage.data.calls > 0 ? (
           <p className="mt-2 text-2xs text-ink-3">
-            本月 {usage.data.calls} 次调用 · 累计 {thousands(usage.data.total_tokens)} tokens
+            {t.ai.usageCalls(usage.data.calls, thousands(usage.data.total_tokens, locale))}
           </p>
         ) : null}
       </section>
@@ -166,6 +168,7 @@ interface ProviderCardProps {
 
 /** 656×~100 的供应商卡片：名称 + 开关 + 三列字段。 */
 function ProviderCard({ provider, onPatch, onDelete }: ProviderCardProps) {
+  const t = useT();
   const [label, setLabel] = useState(provider.label);
   const [baseUrl, setBaseUrl] = useState(provider.base_url);
   const [model, setModel] = useState(provider.model);
@@ -188,7 +191,7 @@ function ProviderCard({ provider, onPatch, onDelete }: ProviderCardProps) {
     <div className="rounded-xl border border-line bg-page px-3 py-3">
       <div className="group flex h-5 items-center gap-2">
         <input
-          aria-label="供应商名称"
+          aria-label={t.ai.providerName}
           value={label}
           onChange={(event) => setLabel(event.target.value)}
           onBlur={(event) => commit('label', event.target.value)}
@@ -202,7 +205,7 @@ function ProviderCard({ provider, onPatch, onDelete }: ProviderCardProps) {
           <DropdownMenu.Trigger asChild>
             <button
               type="button"
-              aria-label="供应商操作"
+              aria-label={t.ai.providerActions}
               className="hidden h-5 w-5 items-center justify-center rounded-md text-ink-3 hover:bg-subtle group-hover:flex"
             >
               <MoreHorizontal size={14} />
@@ -219,7 +222,7 @@ function ProviderCard({ provider, onPatch, onDelete }: ProviderCardProps) {
                 className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-danger-ink outline-none data-[highlighted]:bg-subtle"
               >
                 <Trash2 size={13} />
-                删除
+                {t.ai.deleteProvider}
               </DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
@@ -227,14 +230,14 @@ function ProviderCard({ provider, onPatch, onDelete }: ProviderCardProps) {
 
         <Switch
           checked={provider.enabled}
-          label={`${provider.label} 启用`}
+          label={t.ai.enabledSwitch(provider.label)}
           onChange={(next) => onPatch({ enabled: next })}
         />
       </div>
 
       <div className="mt-2.5 grid grid-cols-[1fr_1fr_120px] gap-3">
         <MiniField
-          label={strings.ai.fieldUrl}
+          label={t.ai.fieldUrl}
           value={baseUrl}
           placeholder="https://api.example.com/v1"
           onChange={(event) => setBaseUrl(event.target.value)}
@@ -242,10 +245,10 @@ function ProviderCard({ provider, onPatch, onDelete }: ProviderCardProps) {
         />
 
         <MiniField
-          label={strings.ai.fieldKey}
+          label={t.ai.fieldKey}
           type="text"
           value={editingKey ? key : provider.api_key_hint}
-          placeholder={strings.ai.keyPlaceholder}
+          placeholder={t.ai.keyPlaceholder}
           autoComplete="off"
           onFocus={() => {
             setEditingKey(true);
@@ -261,7 +264,7 @@ function ProviderCard({ provider, onPatch, onDelete }: ProviderCardProps) {
         />
 
         <MiniField
-          label={strings.ai.fieldModel}
+          label={t.ai.fieldModel}
           value={model}
           placeholder="gpt-4o-mini"
           onChange={(event) => setModel(event.target.value)}

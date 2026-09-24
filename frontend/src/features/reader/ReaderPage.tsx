@@ -5,7 +5,7 @@ import { Resizer } from '../../components/Resizer';
 import { useReaderSearch } from '../../hooks/useReaderSearch';
 import { applyItem, applyState, viewTitle } from '../../lib/scope';
 import { LIST_KEY, LIST_SPLIT, loadWidth } from '../../lib/split';
-import { strings } from '../../lib/strings';
+import { useT, type Strings } from '../../lib/i18n';
 import type { SidebarSummary } from '../../types';
 import { ArticlePane } from './ArticlePane';
 import { ItemList } from './ItemList';
@@ -15,6 +15,7 @@ import { VideoGrid } from './VideoGrid';
 type Mode = 'list' | 'pictures' | 'videos';
 
 export function ReaderPage() {
+  const t = useT();
   const { search, update } = useReaderSearch();
   const [listWidth, setListWidth] = useState(() => loadWidth(LIST_KEY, LIST_SPLIT));
 
@@ -41,19 +42,19 @@ export function ReaderPage() {
 
   const folderName =
     folders.data?.items.find((folder) => folder.id === search.folder)?.name ??
-    (search.folder === 'ungrouped' ? strings.nav.ungrouped : null);
+    (search.folder === 'ungrouped' ? t.nav.ungrouped : null);
 
   const feedTitle = search.feed
     ? feeds.data?.items.find((feed) => feed.id === search.feed)?.title
     : null;
 
   const title = feedTitle ?? viewTitle(search, folderName);
-  const subtitle = buildSubtitle(mode, search.fav, summary.data);
+  const subtitle = buildSubtitle(t, mode, search.fav, summary.data);
 
   if (itemsQuery.isPending) {
     return (
       <div className="flex h-full items-center justify-center bg-surface text-sm text-ink-3">
-        {strings.loading}
+        {t.loading}
       </div>
     );
   }
@@ -104,7 +105,7 @@ export function ReaderPage() {
       />
 
       <Resizer
-        label="调整列表宽度"
+        label={t.list.resizeList}
         width={listWidth}
         onChange={setListWidth}
         config={LIST_SPLIT}
@@ -120,14 +121,19 @@ export function ReaderPage() {
   );
 }
 
-function buildSubtitle(mode: Mode, favorite: boolean, summary: SidebarSummary | undefined): string {
+function buildSubtitle(
+  t: Strings,
+  mode: Mode,
+  favorite: boolean,
+  summary: SidebarSummary | undefined,
+): string {
   if (!summary) return '';
-  if (favorite) return strings.list.favoriteSummary(summary.favorites);
+  if (favorite) return t.list.favoriteSummary(summary.favorites);
   if (mode === 'pictures') {
-    return strings.list.pictureSummary(summary.by_kind.picture ?? 0, summary.feed_count);
+    return t.list.pictureSummary(summary.by_kind.picture ?? 0, summary.feed_count);
   }
   if (mode === 'videos') {
-    return strings.list.videoSummary(summary.by_kind.video ?? 0, summary.feed_count);
+    return t.list.videoSummary(summary.by_kind.video ?? 0, summary.feed_count);
   }
-  return strings.list.unreadSummary(summary.total_unread, summary.feed_count);
+  return t.list.unreadSummary(summary.total_unread, summary.feed_count);
 }

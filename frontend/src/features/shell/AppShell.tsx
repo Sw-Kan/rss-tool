@@ -3,6 +3,7 @@ import { Outlet, useSearchParams } from 'react-router-dom';
 
 import { useMe, useSettings } from '../../api/hooks';
 import { Resizer } from '../../components/Resizer';
+import { isLocale, useI18n, useT } from '../../lib/i18n';
 import { parseSearch } from '../../lib/scope';
 import { SIDEBAR_KEY, SIDEBAR_SPLIT, loadWidth } from '../../lib/split';
 import type { ReaderSearch } from '../../types';
@@ -39,6 +40,8 @@ function readSettingsTab(params: URLSearchParams): SettingsTab | null {
 }
 
 export function AppShell() {
+  const t = useT();
+  const { setLocale } = useI18n();
   const me = useMe();
   const settings = useSettings();
   const { search } = useReaderSearch();
@@ -46,6 +49,12 @@ export function AppShell() {
   const [sidebarWidth, setSidebarWidth] = useState(() => loadWidth(SIDEBAR_KEY, SIDEBAR_SPLIT));
 
   const activeTab = readSettingsTab(params);
+
+  // 登录后以服务端设置为准（登录前的语言来自 localStorage / 浏览器）
+  const serverLanguage = settings.data?.language;
+  useEffect(() => {
+    if (isLocale(serverLanguage)) setLocale(serverLanguage);
+  }, [serverLanguage, setLocale]);
 
   // 主题与正文字号挂在 <html> 上，令牌在 tokens.css 里切换
   useEffect(() => {
@@ -71,7 +80,7 @@ export function AppShell() {
       </div>
 
       <Resizer
-        label="调整侧边栏宽度"
+        label={t.list.resizeSidebar}
         width={sidebarWidth}
         onChange={setSidebarWidth}
         config={SIDEBAR_SPLIT}

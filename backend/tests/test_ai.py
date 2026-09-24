@@ -431,3 +431,39 @@ def test_ai_endpoints_require_login(client: TestClient) -> None:
 def test_presets_endpoint_is_public(auth_client: TestClient) -> None:
     presets = auth_client.get("/api/ai/presets").json()
     assert any(item["key"] == "ollama" for item in presets)
+
+
+# ---------- F7：AI 输出语言跟随界面语言 ----------
+
+
+def test_summary_prompt_follows_ui_language(auth_client: TestClient) -> None:
+    article_id = _seed_article()
+    _configure(auth_client)
+    auth_client.patch("/api/settings", json={"language": "en"})
+
+    with respx.mock:
+        route = respx.post(OPENAI_URL).mock(return_value=openai_reply("Gist.\n• point one"))
+        assert (
+            auth_client.post(
+                "/api/ai/generate?kind=summary", json={"article_id": article_id}
+            ).status_code
+            == 200
+        )
+
+    body = json.loads(route.calls[0].request.content)
+    assert "in English" in body["messages"][0]["content"]
+    assert body["messages"][1]["content"].startswith("Title:")
+    assert "用简体中文" not in body["messages"][0]["content"]
+
+
+def test_translation_prompt_follows_ui_language(auth_client: TestClient) -> None:
+    article_id = _seed_article()
+    _configure(auth_client)
+    auth_client.patch("/api/settings", json={"language": "en"})
+
+    with respx.mock:
+        route = respx.post(OPENAI_URL).mock(return_value=openai_reply("Why I came back to RSS"))
+        auth_client.post("/api/ai/generate?kind=title_translation", json={"article_id": article_id})
+
+    prompt = json.loads(route.calls[0].request.content)["messages"][0]["content"]
+    assert "into English" in prompt

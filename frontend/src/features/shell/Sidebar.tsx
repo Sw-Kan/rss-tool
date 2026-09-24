@@ -29,7 +29,7 @@ import { IconButton } from '../../components/Button';
 import { SectionLabel, TextInput } from '../../components/Field';
 import { useReaderSearch } from '../../hooks/useReaderSearch';
 import { UNGROUPED, applyFeed, applyFolder, applyNav, activeNav } from '../../lib/scope';
-import { strings } from '../../lib/strings';
+import { useT } from '../../lib/i18n';
 import type { Feed, NavKey, ReaderSearch, User } from '../../types';
 import { ProfileMenu } from './ProfileMenu';
 
@@ -41,14 +41,6 @@ const NAV_ICONS: Record<NavKey, typeof LayoutGrid> = {
   favorites: Bookmark,
 };
 
-const NAV_LABELS: Record<NavKey, string> = {
-  all: strings.nav.all,
-  essays: strings.nav.essays,
-  pictures: strings.nav.pictures,
-  videos: strings.nav.videos,
-  favorites: strings.nav.favoritesItem,
-};
-
 interface SidebarProps {
   user: User | null;
   search: ReaderSearch;
@@ -56,7 +48,16 @@ interface SidebarProps {
 }
 
 export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
+  const t = useT();
   const { update } = useReaderSearch();
+
+  const navLabels: Record<NavKey, string> = {
+    all: t.nav.all,
+    essays: t.nav.essays,
+    pictures: t.nav.pictures,
+    videos: t.nav.videos,
+    favorites: t.nav.favoritesItem,
+  };
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -103,9 +104,9 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-soft text-brand-ink">
           <Rss size={15} />
         </span>
-        <span className="flex-1 text-lg font-bold text-ink">{strings.appName}</span>
+        <span className="flex-1 text-lg font-bold text-ink">{t.appName}</span>
         <IconButton
-          label={strings.nav.searchPlaceholder}
+          label={t.nav.searchPlaceholder}
           active={searching}
           onClick={() => {
             setSearching((value) => !value);
@@ -122,7 +123,7 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
             autoFocus
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={strings.nav.searchPlaceholder}
+            placeholder={t.nav.searchPlaceholder}
             className="h-9 text-sm"
           />
         </div>
@@ -143,7 +144,7 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
                   }`}
                 >
                   <Icon size={15} />
-                  <span className="flex-1 text-left">{NAV_LABELS[key]}</span>
+                  <span className="flex-1 text-left">{navLabels[key]}</span>
                   <span className="text-xs text-ink-3">{navCount(key)}</span>
                 </button>
               </li>
@@ -152,7 +153,7 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
         </ul>
 
         <div className="mt-4 mb-2">
-          <SectionLabel>{strings.nav.favorites}</SectionLabel>
+          <SectionLabel>{t.nav.favorites}</SectionLabel>
         </div>
         <button
           type="button"
@@ -162,17 +163,17 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
           }`}
         >
           <Bookmark size={15} />
-          <span className="flex-1 text-left">{strings.nav.favoritesItem}</span>
+          <span className="flex-1 text-left">{t.nav.favoritesItem}</span>
           <span className="text-xs text-ink-3">{counts?.favorites ?? 0}</span>
         </button>
 
         <div className="mt-4 mb-2 flex items-center justify-between pr-2">
-          <SectionLabel>{strings.nav.folders}</SectionLabel>
+          <SectionLabel>{t.nav.folders}</SectionLabel>
           <IconButton
-            label={strings.nav.newFolder}
+            label={t.nav.newFolder}
             size={22}
             onClick={() => {
-              const name = window.prompt(strings.nav.folderName);
+              const name = window.prompt(t.nav.folderName);
               if (name?.trim()) createFolder.mutate(name.trim());
             }}
           >
@@ -181,7 +182,7 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
         </div>
 
         {folderList.length === 0 ? (
-          <p className="px-4 py-2 text-xs text-ink-3">{strings.nav.emptyFolders}</p>
+          <p className="px-4 py-2 text-xs text-ink-3">{t.nav.emptyFolders}</p>
         ) : null}
 
         <ul>
@@ -199,7 +200,7 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
                     }`}
                   >
                     <IconButton
-                      label={isOpen ? '收起目录' : '展开目录'}
+                      label={isOpen ? t.nav.collapseFolder : t.nav.expandFolder}
                       size={22}
                       className="ml-1"
                       onClick={() =>
@@ -251,7 +252,7 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
                       <DropdownMenu.Trigger asChild>
                         <button
                           type="button"
-                          aria-label="目录操作"
+                          aria-label={t.nav.rowActions}
                           className="hidden h-6 w-6 items-center justify-center rounded-md text-ink-3 hover:bg-subtle group-hover:flex"
                         >
                           <MoreHorizontal size={14} />
@@ -266,14 +267,14 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
                             icon={<Pencil size={13} />}
                             onSelect={() => setRenaming(folder.id)}
                           >
-                            重命名
+                            {t.nav.rename}
                           </MenuItem>
                           <MenuItem
                             danger
                             icon={<Trash2 size={13} />}
                             onSelect={() => deleteFolder.mutate(folder.id)}
                           >
-                            删除目录
+                            {t.nav.deleteFolder}
                           </MenuItem>
                         </DropdownMenu.Content>
                       </DropdownMenu.Portal>
@@ -283,7 +284,7 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
                   {isOpen ? (
                     <ul className="mt-0.5 mb-1 space-y-0.5 pl-8">
                       {children.length === 0 ? (
-                        <li className="px-2 py-1 text-xs text-ink-3">目录为空</li>
+                        <li className="px-2 py-1 text-xs text-ink-3">{t.nav.emptyFolder}</li>
                       ) : null}
                       {children
                         .filter((feed) => matches(feed.title))
@@ -316,10 +317,10 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
         </ul>
 
         <div className="mt-4 mb-2">
-          <SectionLabel>{strings.nav.ungrouped}</SectionLabel>
+          <SectionLabel>{t.nav.ungrouped}</SectionLabel>
         </div>
         {ungroupedFeeds.length === 0 ? (
-          <p className="px-4 py-1 text-xs text-ink-3">没有未分组的源</p>
+          <p className="px-4 py-1 text-xs text-ink-3">{t.nav.noUngrouped}</p>
         ) : null}
         <ul className="space-y-0.5">
           {ungroupedFeeds
@@ -342,10 +343,10 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
         </ul>
 
         <div className="mt-4 mb-1">
-          <SectionLabel>{strings.nav.stats}</SectionLabel>
+          <SectionLabel>{t.nav.stats}</SectionLabel>
         </div>
         <p className="px-4 text-xs text-ink-3">
-          {folderList.length} 目录 · {ungroupedFeeds.length} 未分组源
+          {t.nav.folderStats(folderList.length, ungroupedFeeds.length)}
         </p>
       </nav>
 

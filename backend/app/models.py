@@ -118,6 +118,8 @@ class Subscription(Base):
         ForeignKey("folders.id", ondelete="SET NULL"), nullable=True, index=True
     )
     custom_title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # 源级类型覆盖：null = 按内容自动判断。放在订阅上而不是 feed 上，因为 feed 是全局共享的
+    kind_override: Mapped[str | None] = mapped_column(String(10), nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTimeUTC, default=utcnow)
 
@@ -263,22 +265,26 @@ class ProxyConfig(Base):
 
     feed 与 article 是全局共享的（同一 URL 全库只抓一次），所以"每个用户走不同代理"
     在模型上就不成立。本应用是单实例本地部署，代理本来就是这台机器的网络设置。
+
+    两种模式：`system` 跟随进程环境变量；`custom` 用下面三个地址按目标协议选一个。
     """
 
     __tablename__ = "proxy_config"
 
     id: Mapped[str] = mapped_column(String(20), primary_key=True, default="default")
     mode: Mapped[str] = mapped_column(String(10), default="system")
-    url: Mapped[str] = mapped_column(String(500), default="")
+    http_url: Mapped[str] = mapped_column(String(500), default="")
+    https_url: Mapped[str] = mapped_column(String(500), default="")
+    socks5_url: Mapped[str] = mapped_column(String(500), default="")
     no_proxy: Mapped[str] = mapped_column(String(1000), default="")
     updated_at: Mapped[datetime] = mapped_column(DateTimeUTC, default=utcnow)
 
 
 class AutomationRule(Base):
-    """F3 自动化规则：当 → 如果 → 则。
+    """F3 自动化规则：当 → 如果（可多个，and/or 连接）→ 则。
 
-    设计稿每条规则只有一个「如果」和一个「则」，因此这里存单个对象而不是数组。
-    要支持多条件时再迁成 JSON 数组。
+    `conditions` 是 `[{field, op, value}]`，`join` 决定它们之间是 and 还是 or。
+    `trigger=schedule` 时用 `schedule_time`（'HH:MM'，本机时区）定时评估。
     """
 
     __tablename__ = "automation_rules"
@@ -290,8 +296,12 @@ class AutomationRule(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     trigger: Mapped[str] = mapped_column(String(30), default="item_arrived")
-    condition: Mapped[dict] = mapped_column(JSON, default=dict)
+    schedule_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    join: Mapped[str] = mapped_column(String(3), default="and")
+    conditions: Mapped[list] = mapped_column(JSON, default=list)
     action: Mapped[dict] = mapped_column(JSON, default=dict)
+    # 定时规则的上次执行时间：只处理这之后入库的文章，避免每天重复推送
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTimeUTC, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTimeUTC, default=utcnow)
 
 

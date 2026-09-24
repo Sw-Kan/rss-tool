@@ -14,10 +14,10 @@ import {
 } from '../../api/hooks';
 import { SourceLogo } from '../../components/Avatar';
 import { Button } from '../../components/Button';
-import { Badge, EmptyState, Field, Select, TextInput } from '../../components/Field';
+import { Badge, EmptyState, Field, Segmented, Select, TextInput } from '../../components/Field';
 import { Modal } from '../../components/Modal';
 import { useT } from '../../lib/i18n';
-import type { Feed } from '../../types';
+import type { Feed, KindChoice } from '../../types';
 
 export function RssTab() {
   const t = useT();
@@ -268,6 +268,7 @@ function blankFeed(): Feed {
   return {
     id: '',
     url: '',
+    kind_override: 'auto',
     site_url: null,
     title: '',
     description: null,
@@ -296,6 +297,7 @@ function FeedDialog({ feed, folders, onClose }: FeedDialogProps) {
   const [url, setUrl] = useState(feed?.url ?? '');
   const [title, setTitle] = useState(feed?.custom_title ?? '');
   const [folderId, setFolderId] = useState(feed?.folder_id ?? '');
+  const [kind, setKind] = useState<KindChoice>(feed?.kind_override ?? 'auto');
   const [error, setError] = useState<string | null>(null);
 
   const submit = () => {
@@ -306,9 +308,14 @@ function FeedDialog({ feed, folders, onClose }: FeedDialogProps) {
 
     if (isNew) {
       createFeed.mutate(
-        { url: url.trim(), folder_id: folderId || null, title: title.trim() || undefined },
-        { onSuccess: onClose, onError },
-      );
+      {
+        url: url.trim(),
+        folder_id: folderId || null,
+        title: title.trim() || undefined,
+        kind,
+      },
+      { onSuccess: onClose, onError },
+    );
       return;
     }
     updateFeed.mutate(
@@ -317,6 +324,7 @@ function FeedDialog({ feed, folders, onClose }: FeedDialogProps) {
         title: title.trim(),
         folderId: folderId || null,
         clearFolder: folderId === '',
+        kind,
       },
       { onSuccess: onClose, onError },
     );
@@ -363,6 +371,22 @@ function FeedDialog({ feed, folders, onClose }: FeedDialogProps) {
             placeholder={t.settings.feedTitleHint}
           />
         </Field>
+
+        <div>
+          <span className="mb-1 block text-xs font-medium text-ink-2">{t.addSource.kind}</span>
+          <Segmented
+            label={t.addSource.kind}
+            value={kind}
+            onChange={setKind}
+            options={[
+              { value: 'auto', label: t.addSource.kindAuto },
+              { value: 'article', label: t.addSource.kindArticle },
+              { value: 'picture', label: t.addSource.kindPicture },
+              { value: 'video', label: t.addSource.kindVideo },
+            ]}
+          />
+          <span className="mt-1 block text-xs text-ink-3">{t.addSource.kindHint}</span>
+        </div>
 
         <Field label={t.settings.feedColFolder}>
           <Select value={folderId} onChange={(event) => setFolderId(event.target.value)}>

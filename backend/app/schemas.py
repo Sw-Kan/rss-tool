@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 ItemKind = Literal["article", "picture", "video"]
+KindChoice = Literal["auto", "article", "picture", "video"]
 AvatarType = Literal["letter", "image"]
 Theme = Literal["light", "dark"]
 TextStyle = Literal["small", "comfortable", "large"]
@@ -92,6 +93,7 @@ class FolderIn(BaseModel):
 class FeedOut(BaseModel):
     id: str
     url: str
+    kind_override: KindChoice = "auto"
     site_url: str | None
     title: str
     description: str | None
@@ -112,12 +114,15 @@ class FeedCreate(BaseModel):
     url: str = Field(min_length=4, max_length=1000)
     folder_id: str | None = None
     title: str | None = Field(default=None, max_length=300)
+    # auto = 按内容判断；其余值覆盖该源全部条目的类型
+    kind: KindChoice = "auto"
 
 
 class FeedPatch(BaseModel):
     title: str | None = Field(default=None, max_length=300)
     folder_id: str | None = None
     clear_folder: bool = False
+    kind: KindChoice | None = None
 
 
 class RefreshResult(BaseModel):
@@ -300,9 +305,10 @@ class HealthOut(BaseModel):
 # ---------- 集成 / 代理 / 自动化（F2 / F3 / F4） ----------
 
 IntegrationKind = Literal["rsshub", "obsidian", "feishu", "custom_export"]
-ProxyMode = Literal["system", "http", "https", "custom"]
-RuleTrigger = Literal["item_arrived", "video_arrived", "picture_arrived"]
-RuleField = Literal["title", "word_count", "channel", "feed", "kind"]
+ProxyMode = Literal["system", "custom"]
+RuleTrigger = Literal["item_arrived", "video_arrived", "picture_arrived", "schedule"]
+RuleJoin = Literal["and", "or"]
+RuleField = Literal["title", "word_count", "channel", "feed", "kind", "favorite", "read"]
 RuleOp = Literal["contains", "gt", "lt", "eq"]
 RuleActionType = Literal[
     "favorite", "mark_read", "mark_unread", "feishu", "obsidian", "custom_export"
@@ -335,6 +341,8 @@ class FeishuConfig(BaseModel):
 
 class CustomExportConfig(BaseModel):
     endpoint: str = Field(default="", max_length=1000)
+    # JSON 模板，用 {{var}} 占位；留空则用内置默认结构
+    schema_template: str = Field(default="", max_length=8000)
 
 
 class IntegrationOut(BaseModel):
@@ -368,16 +376,21 @@ class IntegrationTestOut(BaseModel):
 
 class ProxyOut(BaseModel):
     mode: ProxyMode
-    url: str
+    http_url: str
+    https_url: str
+    socks5_url: str
     no_proxy: str
 
 
 class ProxyPatch(BaseModel):
     mode: ProxyMode | None = None
-    url: str | None = Field(default=None, max_length=500)
+    http_url: str | None = Field(default=None, max_length=500)
+    https_url: str | None = Field(default=None, max_length=500)
+    socks5_url: str | None = Field(default=None, max_length=500)
     no_proxy: str | None = Field(default=None, max_length=1000)
 
 
+# 每个字段允许的运算符：避免写出「标题 gt 1」这种永远不命中的规则
 # 每个字段允许的运算符：避免写出「标题 gt 1」这种永远不命中的规则
 FIELD_OPS: dict[str, tuple[str, ...]] = {
     "title": ("contains", "eq"),
@@ -385,6 +398,9 @@ FIELD_OPS: dict[str, tuple[str, ...]] = {
     "feed": ("contains", "eq"),
     "word_count": ("gt", "lt", "eq"),
     "kind": ("eq",),
+    # 阅读状态类条件：值取 true / false
+    "favorite": ("eq",),
+    "read": ("eq",),
 }
 
 
@@ -411,14 +427,24 @@ class RuleOut(BaseModel):
     enabled: bool
     position: int
     trigger: RuleTrigger
-    condition: RuleCondition
+    schedule_time: str | None
+    join: RuleJoin
+    conditions: list[RuleCondition]
     action: RuleAction
+
+
+def _default_condition() -> RuleCondition:
+    return RuleCondition(field="title", op="contains", value="")
 
 
 class RuleCreate(BaseModel):
     name: str = Field(default="新规则", max_length=80)
     trigger: RuleTrigger = "item_arrived"
-    condition: RuleCondition = RuleCondition(field="title", op="contains", value="")
+    schedule_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    join: RuleJoin = "and"
+    conditions: list[RuleCondition] = Field(
+        default_factory=lambda: [_default_condition()], max_length=10
+    )
     action: RuleAction = RuleAction(type="favorite")
 
 
@@ -426,5 +452,7 @@ class RulePatch(BaseModel):
     name: str | None = Field(default=None, max_length=80)
     enabled: bool | None = None
     trigger: RuleTrigger | None = None
-    condition: RuleCondition | None = None
+    schedule_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    join: RuleJoin | None = None
+    conditions: list[RuleCondition] | None = Field(default=None, max_length=10)
     action: RuleAction | None = None

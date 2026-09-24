@@ -1,6 +1,8 @@
 /** 与 backend/app/schemas.py 一一对应，两侧必须同步。 */
 
 export type ItemKind = 'article' | 'picture' | 'video';
+/** 新建订阅时的类型选择：auto = 按内容判断 */
+export type KindChoice = 'auto' | ItemKind;
 export type AvatarType = 'letter' | 'image';
 export type Theme = 'light' | 'dark';
 export type TextStyle = 'small' | 'comfortable' | 'large';
@@ -31,6 +33,8 @@ export interface FolderList {
 export interface Feed {
   id: string;
   url: string;
+  /** 'auto' = 按内容分类；其余值覆盖该源全部条目的类型 */
+  kind_override: KindChoice;
   site_url: string | null;
   title: string;
   description: string | null;
@@ -225,6 +229,11 @@ export interface RsshubConfig {
   params: RsshubParam[];
 }
 
+export interface CustomExportConfig {
+  endpoint: string;
+  schema_template: string;
+}
+
 export interface Integration {
   kind: IntegrationKind;
   enabled: boolean;
@@ -232,7 +241,7 @@ export interface Integration {
   rsshub?: RsshubConfig;
   obsidian?: { vault_path: string };
   feishu?: { webhook_url: string };
-  custom_export?: { endpoint: string };
+  custom_export?: CustomExportConfig;
 }
 
 export interface IntegrationTest {
@@ -241,16 +250,27 @@ export interface IntegrationTest {
   latency_ms: number | null;
 }
 
-export type ProxyMode = 'system' | 'http' | 'https' | 'custom';
+export type ProxyMode = 'system' | 'custom';
 
 export interface ProxyConfig {
   mode: ProxyMode;
-  url: string;
+  http_url: string;
+  https_url: string;
+  socks5_url: string;
   no_proxy: string;
 }
 
-export type RuleTrigger = 'item_arrived' | 'video_arrived' | 'picture_arrived';
-export type RuleField = 'title' | 'word_count' | 'channel' | 'feed' | 'kind';
+export type RuleTrigger = 'item_arrived' | 'video_arrived' | 'picture_arrived' | 'schedule';
+export type RuleJoin = 'and' | 'or';
+export type RuleField =
+  | 'title'
+  | 'word_count'
+  | 'channel'
+  | 'feed'
+  | 'kind'
+  /** 阅读状态类条件，值取 true / false */
+  | 'favorite'
+  | 'read';
 export type RuleOp = 'contains' | 'gt' | 'lt' | 'eq';
 export type RuleActionType =
   | 'favorite'
@@ -272,6 +292,9 @@ export interface Rule {
   enabled: boolean;
   position: number;
   trigger: RuleTrigger;
-  condition: RuleCondition;
+  /** 仅 trigger='schedule' 时有值，'HH:MM' */
+  schedule_time: string | null;
+  join: RuleJoin;
+  conditions: RuleCondition[];
   action: { type: RuleActionType };
 }

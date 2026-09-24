@@ -26,6 +26,15 @@ class ItemFilter:
     state: str = "all"
 
 
+def effective_kind():
+    """生效类型 = 订阅上的覆盖值（没有则用文章自身分类）。
+
+    `articles` 是全局共享的，而「这个源算不算图片源」是每个订阅自己的事，
+    所以覆盖放在 subscriptions 上，查询时用 COALESCE 合并。
+    """
+    return func.coalesce(Subscription.kind_override, Article.kind)
+
+
 def visible_articles_subquery(user_id: str) -> Select:
     """当前用户可见的文章集合：文章所属 feed 被该用户订阅。"""
     return (
@@ -42,7 +51,14 @@ def build_item_query(user_id: str, flt: ItemFilter) -> Select:
     """
     state = UserItemState
     stmt = (
-        select(Article, Feed, Subscription.custom_title, state.is_read, state.is_favorite)
+        select(
+            Article,
+            Feed,
+            Subscription.custom_title,
+            state.is_read,
+            state.is_favorite,
+            effective_kind().label("effective_kind"),
+        )
         .join(Feed, Feed.id == Article.feed_id)
         .join(
             Subscription,
@@ -56,7 +72,7 @@ def build_item_query(user_id: str, flt: ItemFilter) -> Select:
     )
 
     if flt.kind:
-        stmt = stmt.where(Article.kind == flt.kind)
+        stmt = stmt.where(effective_kind() == flt.kind)
     if flt.feed_id:
         stmt = stmt.where(Article.feed_id == flt.feed_id)
     if flt.folder_id:

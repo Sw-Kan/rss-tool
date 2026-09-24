@@ -146,7 +146,8 @@ async def refresh_feed(
             db.commit()
             # 304 也要补正文：文章可能是「添加订阅」时入库的（那条路径不抽取），
             # 若首次刷新恰好 304，不补就永远补不上。
-            await extract.extract_pending(db, feed.id, spec=proxy_spec)
+            if _anyone_wants_articles(db, feed.id):
+                await extract.extract_pending(db, feed.id, spec=proxy_spec)
             return RefreshResult(feed_id=feed.id, new_count=0, status="not_modified")
 
         if loaded.parsed.title and not feed.title:
@@ -167,7 +168,9 @@ async def refresh_feed(
         db.commit()
 
         # F5：feed 正文过短的文章去原网页补齐。任何失败都不影响本次刷新结果。
-        await extract.extract_pending(db, feed.id, spec=proxy_spec)
+        # 若所有订阅者都把这个源声明成了图片/视频（没人当文章看），抽取纯属浪费流量。
+        if _anyone_wants_articles(db, feed.id):
+            await extract.extract_pending(db, feed.id, spec=proxy_spec)
 
         # F3：自动化只处理本次新增的文章，且放在抽取之后——
         # 「字数 > 3000」这类条件必须看到抽取后的字数。
@@ -194,6 +197,7 @@ async def create_subscription(
     *,
     folder_id: str | None,
     title: str | None,
+    kind: str = "auto",
 ) -> Subscription:
     """新增订阅：先抓取校验并建 feed，再入库文章。失败抛 FetchError/ValueError。"""
     feed = db.scalar(select(Feed).where(Feed.url == url))
@@ -222,12 +226,23 @@ async def create_subscription(
         feed_id=feed.id,
         folder_id=folder_id,
         custom_title=title if title and feed.title != title else None,
+        kind_override=None if kind == "auto" else kind,
         position=_next_position(db, user.id),
     )
     db.add(subscription)
     db.commit()
     db.refresh(subscription)
     return subscription
+
+
+def _anyone_wants_articles(db: Session, feed_id: str) -> bool:
+    """订阅者里是否有人把这个源当文章看（未覆盖或显式声明为 article）。"""
+    overrides = list(
+        db.scalars(select(Subscription.kind_override).where(Subscription.feed_id == feed_id))
+    )
+    if not overrides:
+        return True
+    return any(item in (None, "article") for item in overrides)
 
 
 def _next_position(db: Session, user_id: str) -> int:

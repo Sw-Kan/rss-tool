@@ -365,8 +365,8 @@ def test_custom_export_payload(db) -> None:  # noqa: ANN001
 
     payload = json.loads(route.calls[0].request.content)
     assert payload["title"] == "标题"
-    assert payload["feed"] == "少数派"
-    assert payload["kind"] == "article"
+    assert payload["source"] == "少数派"
+    assert payload["link"] == "https://x.com/1"
 
 
 def test_custom_export_rejects_missing_endpoint() -> None:
@@ -389,3 +389,100 @@ def _detached_article():  # noqa: ANN202
         content_html="<p>正文</p>",
         published_at=datetime.now(UTC),
     )
+
+
+# ---------- 自定义导出 schema ----------
+
+
+def test_default_schema_is_offered_to_the_ui(auth_client: TestClient) -> None:
+    body = auth_client.get("/api/integrations/custom_export/default-schema").json()
+    assert "{{title}}" in body["schema_template"]
+    assert "{{url}}" in body["schema_template"]
+
+
+def test_custom_schema_is_rendered(auth_client: TestClient, db) -> None:  # noqa: ANN001
+    import asyncio
+
+    from app.db import SessionLocal
+
+    with SessionLocal() as session:
+        article = _stub_article(session)
+        template = '{"n": "{{title}}", "meta": {"src": "{{feed}}", "k": "{{kind}}"}}'
+        payload = integrations.render_template(template, article, "少数派")
+        assert payload == {
+            "n": "标题",
+            "meta": {"src": "少数派", "k": "article"},
+        }
+
+        # 真的按模板 POST 出去
+        with respx.mock:
+            route = respx.post("https://api.example.com/x").mock(return_value=httpx.Response(200))
+            asyncio.run(
+                integrations.push_custom(
+                    {"endpoint": "https://api.example.com/x", "schema_template": template},
+                    article,
+                    "少数派",
+                )
+            )
+        assert json.loads(route.calls[0].request.content)["n"] == "标题"
+
+
+def test_unknown_template_variable_is_reported_clearly(auth_client: TestClient, db) -> None:  # noqa: ANN001
+    from app.db import SessionLocal
+
+    with SessionLocal() as session:
+        article = _stub_article(session)
+        with pytest.raises(integrations.IntegrationError, match="不认识的变量"):
+            integrations.render_template('{"n": {{word_count}}}', article, "x")
+
+
+def test_broken_json_template_is_rejected(auth_client: TestClient, db) -> None:  # noqa: ANN001
+    from app.db import SessionLocal
+
+    with SessionLocal() as session:
+        article = _stub_article(session)
+        with pytest.raises(integrations.IntegrationError, match="合法 JSON"):
+            integrations.render_template('{"n": "{{title}}"', article, "x")
+
+
+def test_template_escapes_quotes_in_values(auth_client: TestClient, db) -> None:  # noqa: ANN001
+    """标题里带引号不能把模板搞坏。"""
+    from app.db import SessionLocal
+
+    with SessionLocal() as session:
+        article = _stub_article(session, title='他说"你好"然后就走了')
+        payload = integrations.render_template('{"n": "{{title}}"}', article, "x")
+        assert payload["n"] == '他说"你好"然后就走了'
+
+
+def test_custom_export_test_endpoint(auth_client: TestClient) -> None:
+    auth_client.put(
+        "/api/integrations/custom_export",
+        json={"custom_export": {"endpoint": "https://api.example.com/x"}},
+    )
+    with respx.mock:
+        route = respx.post("https://api.example.com/x").mock(return_value=httpx.Response(202))
+        body = auth_client.post("/api/integrations/custom_export/test").json()
+
+    assert body["ok"] is True
+    assert "推送成功" in body["message"]
+    assert json.loads(route.calls[0].request.content)["title"] == "示例文章标题"
+
+
+def test_custom_export_test_without_endpoint(auth_client: TestClient) -> None:
+    body = auth_client.post("/api/integrations/custom_export/test").json()
+    assert body["ok"] is False
+    assert "推送接口" in body["message"]
+
+
+def test_custom_export_test_reports_upstream_error(auth_client: TestClient) -> None:
+    auth_client.put(
+        "/api/integrations/custom_export",
+        json={"custom_export": {"endpoint": "https://api.example.com/x"}},
+    )
+    with respx.mock:
+        respx.post("https://api.example.com/x").mock(return_value=httpx.Response(500))
+        body = auth_client.post("/api/integrations/custom_export/test").json()
+
+    assert body["ok"] is False
+    assert "500" in body["message"]

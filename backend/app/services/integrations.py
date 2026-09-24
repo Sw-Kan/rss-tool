@@ -10,6 +10,7 @@ RSSHub 的用法有两条：
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -32,7 +33,7 @@ DEFAULT_CONFIGS: dict[str, dict] = {
     "rsshub": {"base_url": "", "access_key": "", "env": "", "params": []},
     "obsidian": {"vault_path": ""},
     "feishu": {"webhook_url": ""},
-    "custom_export": {"endpoint": ""},
+    "custom_export": {"endpoint": "", "schema_template": ""},
 }
 
 # 一次刷新里同一条规则最多推几条，避免一口气给 webhook 打上百个请求
@@ -333,6 +334,64 @@ def save_to_obsidian(config: dict, article: Article, feed_title: str) -> Path:
     return target
 
 
+TEMPLATE_FIELDS = (
+    "title",
+    "url",
+    "author",
+    "feed",
+    "channel",
+    "kind",
+    "published_at",
+    "summary",
+    "id",
+)
+
+DEFAULT_SCHEMA = """{
+  "title": "{{title}}",
+  "link": "{{url}}",
+  "source": "{{feed}}",
+  "author": "{{author}}",
+  "published": "{{published_at}}",
+  "content": "{{summary}}"
+}"""
+
+
+def template_values(article: Article, feed_title: str) -> dict[str, str]:
+    summary = _article_summary(article, feed_title)
+    return {key: "" if summary.get(key) is None else str(summary[key]) for key in TEMPLATE_FIELDS}
+
+
+def render_template(template: str, article: Article, feed_title: str) -> dict:
+    """把 {{var}} 占位替换成真实值，再解析成 JSON。
+
+    替换时对值做 JSON 转义，否则文章标题里的引号会直接把模板搞坏。
+    """
+    raw = (template or "").strip() or DEFAULT_SCHEMA
+    values = template_values(article, feed_title)
+
+    rendered = raw
+    for key, value in values.items():
+        rendered = rendered.replace("{{" + key + "}}", json.dumps(value)[1:-1])
+
+    # 剩下没被替换掉的占位符说明变量名写错了；直接报 JSON 错误没人看得懂
+    leftovers = sorted(set(re.findall(r"\{\{\s*([a-z_]+)\s*\}\}", rendered)))
+    if leftovers:
+        raise IntegrationError(
+            "Schema 里有不认识的变量："
+            + "、".join(leftovers)
+            + "；可用："
+            + " / ".join(TEMPLATE_FIELDS)
+        )
+
+    try:
+        payload = json.loads(rendered)
+    except ValueError as exc:
+        raise IntegrationError(f"Schema 不是合法 JSON：{exc}") from exc
+    if not isinstance(payload, (dict, list)):
+        raise IntegrationError("Schema 渲染结果必须是 JSON 对象或数组")
+    return payload
+
+
 async def push_custom(config: dict, article: Article, feed_title: str) -> None:
     endpoint = (config.get("endpoint") or "").strip()
     if not endpoint:
@@ -340,10 +399,58 @@ async def push_custom(config: dict, article: Article, feed_title: str) -> None:
     if not endpoint.startswith(("http://", "https://")):
         raise IntegrationError("推送接口必须以 http:// 或 https:// 开头")
 
+    payload = render_template(config.get("schema_template", ""), article, feed_title)
     async with httpx.AsyncClient(timeout=8.0, trust_env=False) as client:
-        response = await client.post(endpoint, json=_article_summary(article, feed_title))
+        response = await client.post(endpoint, json=payload)
     if response.status_code >= 400:
         raise IntegrationError(f"推送接口返回 HTTP {response.status_code}")
+
+
+async def test_custom_export(config: dict) -> tuple[bool, str, int | None]:
+    """设置页的「测试推送」：真发一条样本数据过去。"""
+    endpoint = (config.get("endpoint") or "").strip()
+    if not endpoint:
+        return False, "请先填写推送接口", None
+    if not endpoint.startswith(("http://", "https://")):
+        return False, "推送接口必须以 http:// 或 https:// 开头"
+
+    sample = _SampleArticle()
+    try:
+        payload = render_template(config.get("schema_template", ""), sample, "示例订阅源")
+    except IntegrationError as exc:
+        return False, str(exc), None
+
+    started = time.perf_counter()
+    try:
+        async with httpx.AsyncClient(timeout=8.0, trust_env=False) as client:
+            response = await client.post(endpoint, json=payload)
+    except httpx.TimeoutException:
+        return False, "推送超时", None
+    except httpx.HTTPError as exc:
+        return False, f"推送失败：{exc}", None
+
+    latency = int((time.perf_counter() - started) * 1000)
+    if response.status_code >= 400:
+        return False, f"接口返回 HTTP {response.status_code}", latency
+    return True, "推送成功", latency
+
+
+class _SampleArticle:
+    """只用于「测试推送」的假文章，避免依赖数据库。"""
+
+    title = "示例文章标题"
+    url = "https://example.com/post/1"
+    author = "示例作者"
+    channel_name = "示例频道"
+    kind = "article"
+    published_at = None
+    content_html = "<p>这是示例正文。</p>"
+    summary_html = None
+
+    def __init__(self) -> None:
+        from datetime import UTC, datetime
+
+        self.published_at = datetime.now(UTC)
 
 
 def host_of(url: str) -> str:

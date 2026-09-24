@@ -1,4 +1,4 @@
-import { Check, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { Check, Eye, EyeOff, Plus, RefreshCw } from 'lucide-react';
 import { useBulkRead, useRefreshAll } from '../../api/hooks';
 import { SourceLogo } from '../../components/Avatar';
 import { IconButton } from '../../components/Button';
@@ -20,6 +20,7 @@ interface ItemListProps {
   loadingMore: boolean;
   onLoadMore: () => void;
   listWidth: number;
+  onAddSource: () => void;
 }
 
 export function ItemList({
@@ -34,6 +35,7 @@ export function ItemList({
   loadingMore,
   onLoadMore,
   listWidth,
+  onAddSource,
 }: ItemListProps) {
   const t = useT();
   const { locale } = useI18n();
@@ -57,6 +59,9 @@ export function ItemList({
             <p className="mt-0.5 truncate text-2xs text-ink-3">{subtitle}</p>
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
+            <IconButton label={t.addSource.listEntry} onClick={onAddSource}>
+              <Plus size={15} />
+            </IconButton>
             <IconButton
               label={t.list.refresh}
               onClick={() => refresh.mutate(search.folder === 'ungrouped' ? null : search.folder)}

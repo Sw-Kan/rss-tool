@@ -184,3 +184,74 @@ def test_foreign_item_is_not_visible(auth_client: TestClient) -> None:
         feed = make_feed(db, url="https://nobody.example.com/feed")
         orphan = add_article(db, feed, guid="orphan")
     assert auth_client.get(f"/api/items/{orphan.id}").status_code == 404
+
+
+# ---------- 源级类型覆盖 ----------
+
+
+def test_source_kind_override_changes_effective_kind(auth_client: TestClient) -> None:
+    """把源声明成图片后，它的文章要出现在图片过滤下，且返回的 kind 也是图片。"""
+    with SessionLocal() as db:
+        user = db.query(User).first()
+        assert user is not None
+        feed = make_feed(db, "图片源", url="https://pic.example.com/feed")
+        subscribe(db, user, feed)
+        article = add_article(db, feed, guid="p1", kind="article")
+        feed_id = feed.id
+        article_id = article.id
+
+    # 默认：按内容分类，出现在文章下
+    assert [i["id"] for i in auth_client.get("/api/items?kind=article").json()["items"]] == [
+        article_id
+    ]
+    assert auth_client.get("/api/items?kind=picture").json()["items"] == []
+
+    # 声明成图片源
+    patched = auth_client.patch(f"/api/feeds/{feed_id}", json={"kind": "picture"})
+    assert patched.status_code == 200
+    assert patched.json()["kind_override"] == "picture"
+
+    assert auth_client.get("/api/items?kind=article").json()["items"] == []
+    pictures = auth_client.get("/api/items?kind=picture").json()["items"]
+    assert [i["id"] for i in pictures] == [article_id]
+    assert pictures[0]["kind"] == "picture"
+
+
+def test_kind_override_affects_detail_and_summary(auth_client: TestClient) -> None:
+    with SessionLocal() as db:
+        user = db.query(User).first()
+        assert user is not None
+        feed = make_feed(db, "视频源", url="https://v.example.com/feed")
+        subscribe(db, user, feed)
+        article = add_article(db, feed, guid="v1", kind="article")
+        feed_id = feed.id
+        article_id = article.id
+
+    auth_client.patch(f"/api/feeds/{feed_id}", json={"kind": "video"})
+
+    assert auth_client.get(f"/api/items/{article_id}").json()["kind"] == "video"
+    by_kind = auth_client.get("/api/items/summary").json()["by_kind"]
+    assert by_kind["video"] == 1
+    assert by_kind["article"] == 0
+
+
+def test_kind_override_can_be_reset_to_auto(auth_client: TestClient) -> None:
+    with SessionLocal() as db:
+        user = db.query(User).first()
+        assert user is not None
+        feed = make_feed(db, "源", url="https://a.example.com/feed")
+        subscribe(db, user, feed)
+
+    auth_client.patch(f"/api/feeds/{feed.id}", json={"kind": "picture"})
+    body = auth_client.patch(f"/api/feeds/{feed.id}", json={"kind": "auto"}).json()
+    assert body["kind_override"] == "auto"
+
+
+def test_invalid_kind_is_rejected(auth_client: TestClient) -> None:
+    with SessionLocal() as db:
+        user = db.query(User).first()
+        assert user is not None
+        feed = make_feed(db, "源", url="https://b.example.com/feed")
+        subscribe(db, user, feed)
+
+    assert auth_client.patch(f"/api/feeds/{feed.id}", json={"kind": "essay"}).status_code == 422

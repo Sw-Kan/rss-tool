@@ -68,3 +68,16 @@ async def test_rsshub(user: CurrentUser, db: DbSession) -> IntegrationTestOut:
     config = integrations.get_config(db, user.id, "rsshub")
     ok, message, latency = await integrations.test_rsshub(config)
     return IntegrationTestOut(ok=ok, message=message, latency_ms=latency)
+
+
+@router.get("/custom_export/default-schema")
+def default_schema() -> dict[str, str]:
+    """新建自定义导出时给前端的默认模板。"""
+    return {"schema_template": integrations.DEFAULT_SCHEMA}
+
+
+@router.post("/custom_export/test", response_model=IntegrationTestOut)
+async def test_custom_export(user: CurrentUser, db: DbSession) -> IntegrationTestOut:
+    config = integrations.get_config(db, user.id, "custom_export")
+    ok, message, latency = await integrations.test_custom_export(config)
+    return IntegrationTestOut(ok=ok, message=message, latency_ms=latency)

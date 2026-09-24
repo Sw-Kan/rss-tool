@@ -33,7 +33,7 @@ def test_rule_crud(auth_client: TestClient) -> None:
         json={
             "name": "Rust 文章自动收藏",
             "trigger": "item_arrived",
-            "condition": {"field": "title", "op": "contains", "value": "Rust"},
+            "conditions": [{"field": "title", "op": "contains", "value": "Rust"}],
             "action": {"type": "favorite"},
         },
     )
@@ -41,7 +41,7 @@ def test_rule_crud(auth_client: TestClient) -> None:
     rule = created.json()
     assert rule["name"] == "Rust 文章自动收藏"
     assert rule["enabled"] is True
-    assert rule["condition"]["value"] == "Rust"
+    assert rule["conditions"][0]["value"] == "Rust"
 
     patched = auth_client.patch(
         f"/api/automation/rules/{rule['id']}", json={"enabled": False}
@@ -64,8 +64,9 @@ def test_rule_defaults(auth_client: TestClient) -> None:
     "payload",
     [
         {"trigger": "on_sunrise"},
-        {"condition": {"field": "mood", "op": "contains", "value": "x"}},
-        {"condition": {"field": "title", "op": "gt", "value": "1"}},
+        {"conditions": [{"field": "mood", "op": "contains", "value": "x"}]},
+        {"conditions": [{"field": "title", "op": "gt", "value": "1"}]},
+        {"trigger": "schedule", "schedule_time": "25:00"},
         {"action": {"type": "explode"}},
     ],
 )
@@ -99,8 +100,16 @@ def _rule(trigger: str, field: str, op: str, value: str) -> AutomationRule:
     return AutomationRule(
         user_id="u",
         trigger=trigger,
-        condition={"field": field, "op": op, "value": value},
+        join="and",
+        conditions=[{"field": field, "op": op, "value": value}],
         action={"type": "favorite"},
+    )
+
+
+def matches(rule: AutomationRule, article: Article, feed_title: str = "少数派") -> bool:
+    """完整判定 = 触发类型命中 + 条件命中（定时触发不走 trigger_matches）。"""
+    return automation.trigger_matches(rule, article) and automation.rule_matches(
+        rule, article, feed_title
     )
 
 
@@ -119,27 +128,65 @@ def _rule(trigger: str, field: str, op: str, value: str) -> AutomationRule:
     ],
 )
 def test_rule_matches(rule: AutomationRule, expected: bool) -> None:
-    assert automation.rule_matches(rule, _article(), "少数派") is expected
+    assert matches(rule, _article()) is expected
 
 
-def test_channel_falls_back_to_feed_title() -> None:
-    rule = _rule("item_arrived", "channel", "eq", "少数派")
-    assert automation.rule_matches(rule, _article(channel_name=None), "少数派") is True
-    assert automation.rule_matches(rule, _article(channel_name="少数派视频"), "少数派") is False
+def test_schedule_trigger_is_not_a_kind_trigger() -> None:
+    """schedule 由定时任务单独处理，不该被「新文章到达」这条路命中。"""
+    rule = _rule("schedule", "title", "contains", "rust")
+    assert automation.trigger_matches(rule, _article()) is False
 
 
-def test_invalid_word_count_value_never_matches() -> None:
-    assert (
-        automation.rule_matches(_rule("item_arrived", "word_count", "gt", "多"), _article(), "x")
-        is False
+def test_or_join_matches_when_any_condition_holds() -> None:
+    rule = AutomationRule(
+        user_id="u",
+        trigger="item_arrived",
+        join="or",
+        conditions=[
+            {"field": "title", "op": "contains", "value": "python"},
+            {"field": "word_count", "op": "gt", "value": "3000"},
+        ],
+        action={"type": "favorite"},
     )
+    assert automation.rule_matches(rule, _article(), "少数派") is True
 
 
-def test_empty_needle_never_matches() -> None:
-    assert (
-        automation.rule_matches(_rule("item_arrived", "title", "contains", ""), _article(), "x")
-        is False
+def test_and_join_needs_all_conditions() -> None:
+    rule = AutomationRule(
+        user_id="u",
+        trigger="item_arrived",
+        join="and",
+        conditions=[
+            {"field": "title", "op": "contains", "value": "rust"},
+            {"field": "word_count", "op": "gt", "value": "99999"},
+        ],
+        action={"type": "favorite"},
     )
+    assert automation.rule_matches(rule, _article(), "少数派") is False
+
+
+def test_rule_without_conditions_never_matches() -> None:
+    rule = AutomationRule(
+        user_id="u", trigger="item_arrived", conditions=[], action={"type": "favorite"}
+    )
+    assert automation.rule_matches(rule, _article(), "少数派") is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "state", "expected"),
+    [
+        ("favorite", "true", {"favorite": True, "read": False}, True),
+        ("favorite", "true", {"favorite": False, "read": False}, False),
+        ("favorite", "false", {"favorite": False, "read": False}, True),
+        ("read", "true", {"favorite": False, "read": True}, True),
+        ("read", "false", {"favorite": True, "read": False}, True),
+        # 非法值一律不命中
+        ("favorite", "maybe", {"favorite": True, "read": False}, False),
+    ],
+)
+def test_reading_state_conditions(field: str, value: str, state: dict, expected: bool) -> None:
+    condition = {"field": field, "op": "eq", "value": value}
+    assert automation.condition_matches(condition, _article(), "少数派", state) is expected
 
 
 # ---------- 动作落地 ----------
@@ -166,7 +213,7 @@ async def test_favorite_action_writes_state(auth_client: TestClient, db: Session
             user_id=user.id,
             name="收藏 Rust",
             trigger="item_arrived",
-            condition={"field": "title", "op": "contains", "value": "rust"},
+            conditions=[{"field": "title", "op": "contains", "value": "rust"}],
             action={"type": "favorite"},
             position=1,
         )
@@ -191,7 +238,7 @@ async def test_disabled_rule_is_skipped(auth_client: TestClient, db: Session) ->
             name="关掉的规则",
             enabled=False,
             trigger="item_arrived",
-            condition={"field": "title", "op": "contains", "value": "rust"},
+            conditions=[{"field": "title", "op": "contains", "value": "rust"}],
             action={"type": "favorite"},
         )
     )
@@ -210,7 +257,7 @@ async def test_feishu_action_pushes(auth_client: TestClient, db: Session) -> Non
             user_id=user.id,
             name="推送飞书",
             trigger="item_arrived",
-            condition={"field": "title", "op": "contains", "value": "rust"},
+            conditions=[{"field": "title", "op": "contains", "value": "rust"}],
             action={"type": "feishu"},
         )
     )
@@ -236,7 +283,7 @@ async def test_feishu_action_without_config_is_reported_not_raised(
             user_id=user.id,
             name="没配集成",
             trigger="item_arrived",
-            condition={"field": "title", "op": "contains", "value": "rust"},
+            conditions=[{"field": "title", "op": "contains", "value": "rust"}],
             action={"type": "feishu"},
         )
     )
@@ -256,7 +303,7 @@ async def test_push_is_capped_per_run(auth_client: TestClient, db: Session) -> N
             user_id=user.id,
             name="推送飞书",
             trigger="item_arrived",
-            condition={"field": "title", "op": "contains", "value": "rust"},
+            conditions=[{"field": "title", "op": "contains", "value": "rust"}],
             action={"type": "feishu"},
         )
     )
@@ -289,7 +336,7 @@ async def test_rules_run_in_order_and_all_matching_ones_apply(
                 user_id=user.id,
                 name=name,
                 trigger="item_arrived",
-                condition={"field": "title", "op": "contains", "value": "rust"},
+                conditions=[{"field": "title", "op": "contains", "value": "rust"}],
                 action={"type": action},
                 position=position,
             )
@@ -311,7 +358,7 @@ async def test_only_new_articles_are_evaluated(auth_client: TestClient, db: Sess
             user_id=user.id,
             name="收藏 Rust",
             trigger="item_arrived",
-            condition={"field": "title", "op": "contains", "value": "rust"},
+            conditions=[{"field": "title", "op": "contains", "value": "rust"}],
             action={"type": "favorite"},
         )
     )
@@ -340,7 +387,7 @@ async def test_refresh_triggers_automation_after_extraction(
             user_id=user.id,
             name="长文收藏",
             trigger="item_arrived",
-            condition={"field": "word_count", "op": "gt", "value": "200"},
+            conditions=[{"field": "word_count", "op": "gt", "value": "200"}],
             action={"type": "favorite"},
         )
     )
@@ -378,7 +425,7 @@ async def test_add_feed_does_not_run_automation(auth_client: TestClient, db: Ses
             user_id=user.id,
             name="收藏全部",
             trigger="item_arrived",
-            condition={"field": "title", "op": "contains", "value": ""},
+            conditions=[{"field": "title", "op": "contains", "value": ""}],
             action={"type": "favorite"},
         )
     )
@@ -398,3 +445,102 @@ def test_extract_pending_is_reachable_with_proxy_spec(db: Session) -> None:
 
     signature = inspect.signature(extract.extract_pending)
     assert "spec" in signature.parameters
+
+
+# ---------- 定时规则 ----------
+
+
+def _add_schedule_rule(db: Session, user_id: str, hhmm: str, value: str = "rust") -> AutomationRule:
+    rule = AutomationRule(
+        user_id=user_id,
+        name="每天推送",
+        trigger="schedule",
+        schedule_time=hhmm,
+        join="and",
+        conditions=[{"field": "title", "op": "contains", "value": value}],
+        action={"type": "favorite"},
+    )
+    db.add(rule)
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
+def test_schedule_time_is_cleared_for_other_triggers(auth_client: TestClient) -> None:
+    """非定时触发不该留着误导性的时间。"""
+    created = auth_client.post(
+        "/api/automation/rules",
+        json={"trigger": "item_arrived", "schedule_time": "08:00"},
+    ).json()
+    assert created["schedule_time"] is None
+
+    switched = auth_client.patch(
+        f"/api/automation/rules/{created['id']}", json={"trigger": "schedule"}
+    ).json()
+    assert switched["schedule_time"] == "08:00"
+
+
+def test_due_schedule_rules_only_fire_once_a_day(auth_client: TestClient, db: Session) -> None:
+    from datetime import UTC, datetime
+
+    _ = auth_client
+    user, _article, _feed_id = _seed(db)
+    now = datetime.now()
+    rule = _add_schedule_rule(db, user.id, now.strftime("%H:%M"))
+
+    due = automation.due_schedule_rules(db, now)
+    assert [r.id for r in due] == [rule.id]
+
+    rule.last_run_at = datetime.now(UTC)
+    db.commit()
+    assert automation.due_schedule_rules(db, now) == []
+
+
+def test_schedule_rule_with_other_time_is_not_due(auth_client: TestClient, db: Session) -> None:
+    from datetime import datetime
+
+    _ = auth_client
+    user, _article, _feed_id = _seed(db)
+    now = datetime.now()
+    _add_schedule_rule(db, user.id, "23:59" if now.strftime("%H:%M") != "23:59" else "00:00")
+    assert automation.due_schedule_rules(db, now) == []
+
+
+@pytest.mark.asyncio
+async def test_run_scheduled_rules_applies_action_and_stamps_last_run(
+    auth_client: TestClient, db: Session
+) -> None:
+    from datetime import datetime
+
+    _ = auth_client
+    user, article, _feed_id = _seed(db)
+    now = datetime.now()
+    rule = _add_schedule_rule(db, user.id, now.strftime("%H:%M"))
+
+    applied = await automation.run_scheduled_rules(db, now)
+
+    assert applied == 1
+    db.refresh(rule)
+    assert rule.last_run_at is not None
+    state = db.query(UserItemState).filter_by(user_id=user.id, article_id=article.id).one()
+    assert state.is_favorite is True
+
+    # 同一天再跑一次不该重复执行
+    assert await automation.run_scheduled_rules(db, now) == 0
+
+
+@pytest.mark.asyncio
+async def test_schedule_only_sees_articles_fetched_after_last_run(
+    auth_client: TestClient, db: Session
+) -> None:
+    from datetime import UTC, datetime
+
+    _ = auth_client
+    user, _article, _feed_id = _seed(db)
+    now = datetime.now()
+    rule = _add_schedule_rule(db, user.id, now.strftime("%H:%M"))
+    rule.last_run_at = datetime.now(UTC)
+    db.commit()
+
+    # 上一篇是 last_run_at 之前入库的 → 不该再被处理
+    assert await automation.run_scheduled_rules(db, now) == 0

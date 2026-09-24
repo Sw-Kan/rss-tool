@@ -136,13 +136,18 @@ src/lib/i18n/index.tsx  LOCALES / detectLocale / bundles / I18nProvider / useT
   → no_proxy 命中（域名 / 后缀 / CIDR）则直连
 
 自动化（automation_rules）
-  触发点：refresh_feed() 在 upsert + 全文抽取之后
-  1. run_for_new_articles(feed_id, 本次新增的 id)
-  2. 对每个订阅了该源的用户，按 position 顺序匹配规则（命中后继续匹配后续规则）
-  3. 动作：收藏 / 标记已读 / 标记未读 → 经 services/item_state.py（M7 写入口）
-           推送飞书 / 写入 Obsidian / 推自定义接口 → 经 integrations，受 MAX_PUSH_PER_RUN 限制
+  触发点一（新条目）：refresh_feed() 在 upsert + 全文抽取之后
+    1. run_for_new_articles(feed_id, 本次新增的 id)
+    2. 对每个订阅了该源的用户，按 position 顺序匹配规则（命中后继续匹配后续规则）
+    3. 条件 = conditions[] 按 join(and/or) 合并；trigger 先做类型/视频/图片判定
+  触发点二（定时）：scheduler 每分钟一个 tick
+    1. due_schedule_rules() 找 schedule_time == 当前 HH:MM 且今天没跑过的规则
+    2. 只处理 last_run_at 之后入库的文章（默认回看 24 小时），跑完写 last_run_at
+  动作：收藏 / 已读 / 未读 → 经 services/item_state.py（M7 写入口）
+        推送飞书 / 写入 Obsidian / 推自定义接口 → 经 integrations，受 MAX_PUSH_PER_RUN 限制
 
   顺序很重要：抽取排在自动化之前，「字数 > N」这类条件才能看到抽取后的字数。
+  定时规则的 HH:MM 按服务器时区解释（Docker 要设 TZ，否则默认 UTC）。
 ```
 
 关键性质：
@@ -177,6 +182,21 @@ resolveMediaUrl(src, article.url)          GET /api/media?url=<encoded>
 ## 阅读状态
 
 `user_item_state` 是 `(user_id, article_id)` 的稀疏表：没行 = 未读未收藏。列表查询 left join 后归一为 `is_read/is_favorite` 布尔值返回。
+
+### 生效类型（源级覆盖）
+
+`articles` 是全局共享的，而「这个源算不算图片源」是每个订阅自己的事，所以覆盖值放在
+`subscriptions.kind_override`，查询时用 `COALESCE(subscription.kind_override, article.kind)`：
+
+- 过滤：`WHERE COALESCE(...) = :kind`
+- 投影：把合并结果作为 `effective_kind` 一起 select 出来，返回给前端的 `kind` 就是它
+- 侧边栏计数（`services/counts.py`）用同一个表达式分组，否则数字会和列表对不上
+- 全文抽取只在「至少有一个订阅者把这个源当文章看」时才跑（`_anyone_wants_articles`）
+
+### 自定义导出的模板渲染
+
+`{{变量}}` 替换时对值做 JSON 转义（标题里的引号不能把模板搞坏），然后 `json.loads`；
+渲染后若还剩 `{{x}}` 就报「不认识的变量」并列出可用变量——比抛 JSON 解析错误清楚得多。
 
 ## 前端路由契约
 

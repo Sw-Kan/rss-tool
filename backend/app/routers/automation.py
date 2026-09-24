@@ -13,19 +13,25 @@ router = APIRouter(prefix="/api/automation", tags=["automation"])
 
 
 def _out(row: AutomationRule) -> RuleOut:
-    condition = row.condition or {}
     action = row.action or {}
+    conditions = [
+        RuleCondition(
+            field=item.get("field", "title"),
+            op=item.get("op", "contains"),
+            value=str(item.get("value") or ""),
+        )
+        for item in (row.conditions or [])
+        if isinstance(item, dict)
+    ]
     return RuleOut(
         id=row.id,
         name=row.name,
         enabled=row.enabled,
         position=row.position,
         trigger=row.trigger,  # type: ignore[arg-type]
-        condition=RuleCondition(
-            field=condition.get("field", "title"),
-            op=condition.get("op", "contains"),
-            value=str(condition.get("value") or ""),
-        ),
+        schedule_time=row.schedule_time,
+        join=row.join,  # type: ignore[arg-type]
+        conditions=conditions or [RuleCondition(field="title", op="contains", value="")],
         action={"type": action.get("type", "favorite")},  # type: ignore[arg-type]
     )
 
@@ -35,6 +41,13 @@ def _owned(db: DbSession, user_id: str, rule_id: str) -> AutomationRule:
     if row is None or row.user_id != user_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="规则不存在")
     return row
+
+
+def _schedule_time(trigger: str, value: str | None) -> str | None:
+    """只有定时触发才保留时间；其它触发一律清空，避免留下误导性的旧值。"""
+    if trigger != "schedule":
+        return None
+    return value or "08:00"
 
 
 @router.get("/rules", response_model=list[RuleOut])
@@ -56,7 +69,9 @@ def create_rule(payload: RuleCreate, user: CurrentUser, db: DbSession) -> RuleOu
         user_id=user.id,
         name=payload.name.strip() or "新规则",
         trigger=payload.trigger,
-        condition=payload.condition.model_dump(),
+        schedule_time=_schedule_time(payload.trigger, payload.schedule_time),
+        join=payload.join,
+        conditions=[c.model_dump() for c in payload.conditions],
         action=payload.action.model_dump(),
         position=(last or 0) + 1,
     )
@@ -79,8 +94,12 @@ def patch_rule(rule_id: str, payload: RulePatch, user: CurrentUser, db: DbSessio
         row.enabled = payload.enabled
     if payload.trigger is not None:
         row.trigger = payload.trigger
-    if payload.condition is not None:
-        row.condition = payload.condition.model_dump()
+    if payload.schedule_time is not None or payload.trigger is not None:
+        row.schedule_time = _schedule_time(row.trigger, payload.schedule_time or row.schedule_time)
+    if payload.join is not None:
+        row.join = payload.join
+    if payload.conditions is not None:
+        row.conditions = [c.model_dump() for c in payload.conditions]
     if payload.action is not None:
         row.action = payload.action.model_dump()
 

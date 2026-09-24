@@ -3,6 +3,7 @@ import type {
   InputHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
+  TextareaHTMLAttributes,
 } from 'react';
 
 /** 26px pill chip（全部 / 未读 / 已读）。 */
@@ -64,11 +65,13 @@ interface FieldProps {
 
 export function Field({ label, hint, children }: FieldProps) {
   return (
-    <label className="block">
-      <span className="mb-1 block text-xs font-medium text-ink-2">{label}</span>
-      {children}
+    <div>
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-ink-2">{label}</span>
+        {children}
+      </label>
       {hint ? <span className="mt-1 block text-xs text-ink-3">{hint}</span> : null}
-    </label>
+    </div>
   );
 }
 
@@ -135,5 +138,50 @@ export function Select({
     <select {...rest} className={`${CONTROL_CLASS} h-10 ${className}`}>
       {children}
     </select>
+  );
+}
+
+/** 分段选择器（类型、正文字号这类 2–4 选一）。 */
+export function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (next: T) => void;
+  label: string;
+}) {
+  return (
+    <div role="radiogroup" aria-label={label} className="flex w-full rounded-lg bg-subtle p-1">
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(option.value)}
+            className={`h-8 flex-1 rounded-md text-xs transition-colors ${
+              active ? 'bg-surface font-semibold text-ink' : 'font-medium text-ink-2 hover:text-ink'
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 多行文本（JSON 模板等），等宽字体便于对齐。 */
+export function TextArea({ className = '', ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      {...rest}
+      className={`w-full resize-y rounded-lg border border-line bg-surface px-3 py-2 font-mono text-xs leading-relaxed text-ink placeholder:text-ink-3 outline-none transition-colors focus:border-brand ${className}`}
+    />
   );
 }

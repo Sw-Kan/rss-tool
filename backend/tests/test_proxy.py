@@ -1,4 +1,4 @@
-"""F4 代理：配置接口、no_proxy 匹配、按模式构造客户端。"""
+"""F4 代理：两模式配置、按协议选地址、no_proxy 匹配、测试连接。"""
 
 from __future__ import annotations
 
@@ -9,32 +9,41 @@ from fastapi.testclient import TestClient
 
 from app.services import proxy
 
+CUSTOM = {
+    "mode": "custom",
+    "http_url": "http://127.0.0.1:7890",
+    "https_url": "http://127.0.0.1:7891",
+    "socks5_url": "socks5://10.0.0.8:1080",
+    "no_proxy": "localhost, *.internal",
+}
+
 
 def test_defaults_to_system(auth_client: TestClient) -> None:
     assert auth_client.get("/api/proxy").json() == {
         "mode": "system",
-        "url": "",
+        "http_url": "",
+        "https_url": "",
+        "socks5_url": "",
         "no_proxy": "",
     }
 
 
 def test_patch_roundtrip(auth_client: TestClient) -> None:
-    body = auth_client.patch(
-        "/api/proxy",
-        json={"mode": "http", "url": "127.0.0.1:7890", "no_proxy": "localhost, *.internal"},
-    ).json()
-    assert body == {"mode": "http", "url": "127.0.0.1:7890", "no_proxy": "localhost, *.internal"}
-    assert auth_client.get("/api/proxy").json() == body
+    assert auth_client.patch("/api/proxy", json=CUSTOM).json() == CUSTOM
+    assert auth_client.get("/api/proxy").json() == CUSTOM
 
 
-def test_switching_back_to_system_clears_url(auth_client: TestClient) -> None:
-    auth_client.patch("/api/proxy", json={"mode": "custom", "url": "socks5://10.0.0.8:1080"})
+def test_switching_to_system_keeps_custom_urls(auth_client: TestClient) -> None:
+    """切回系统代理不该把自定义地址抹掉，切回来还要在。"""
+    auth_client.patch("/api/proxy", json=CUSTOM)
     body = auth_client.patch("/api/proxy", json={"mode": "system"}).json()
+
     assert body["mode"] == "system"
-    assert body["url"] == ""
+    assert body["http_url"] == "http://127.0.0.1:7890"
+    assert body["socks5_url"] == "socks5://10.0.0.8:1080"
 
 
-@pytest.mark.parametrize("mode", ["direct", "socks", "proxy"])
+@pytest.mark.parametrize("mode", ["direct", "socks", "http", "https"])
 def test_invalid_mode_is_rejected(auth_client: TestClient, mode: str) -> None:
     assert auth_client.patch("/api/proxy", json={"mode": mode}).status_code == 422
 
@@ -77,10 +86,36 @@ def test_no_proxy_accepts_semicolons_and_blanks() -> None:
 
 
 def test_bypass_combines_host_and_cidr() -> None:
-    spec = proxy.ProxySpec(mode="custom", url="x", patterns=["local", "10.0.0.0/8"])
+    spec = proxy.ProxySpec(mode="custom", socks5_url="x", patterns=["local", "10.0.0.0/8"])
     assert proxy.bypass(spec, "local", []) is True
     assert proxy.bypass(spec, "example.com", ["10.1.1.1"]) is True
     assert proxy.bypass(spec, "example.com", ["1.2.3.4"]) is False
+
+
+# ---------- 选地址 ----------
+
+
+def test_proxy_for_picks_by_scheme() -> None:
+    spec = proxy.ProxySpec(mode="custom", http_url="http://h:1", https_url="http://s:2")
+    assert proxy.proxy_for(spec, "http") == "http://h:1"
+    assert proxy.proxy_for(spec, "https") == "http://s:2"
+
+
+def test_socks5_acts_as_fallback_for_both_schemes() -> None:
+    spec = proxy.ProxySpec(mode="custom", socks5_url="socks5://x:1080")
+    assert proxy.proxy_for(spec, "http") == "socks5://x:1080"
+    assert proxy.proxy_for(spec, "https") == "socks5://x:1080"
+
+
+def test_system_mode_never_returns_a_proxy() -> None:
+    spec = proxy.ProxySpec(mode="system", http_url="http://h:1")
+    assert proxy.proxy_for(spec, "http") == ""
+
+
+def test_configured_flag() -> None:
+    assert proxy.ProxySpec(mode="custom").configured is False
+    assert proxy.ProxySpec(mode="custom", socks5_url="x").configured is True
+    assert proxy.ProxySpec(mode="system", http_url="x").configured is False
 
 
 # ---------- 客户端构造 ----------
@@ -97,28 +132,21 @@ def test_system_mode_respects_no_proxy() -> None:
     assert proxy.client_kwargs(spec, "https://x.com") == {"trust_env": False}
 
 
-def test_custom_mode_applies_to_everything() -> None:
-    spec = proxy.ProxySpec(mode="custom", url="socks5://10.0.0.8:1080")
-    assert proxy.client_kwargs(spec, "https://x.com")["proxy"] == "socks5://10.0.0.8:1080"
-    assert proxy.client_kwargs(spec, "http://x.com")["proxy"] == "socks5://10.0.0.8:1080"
+def test_custom_mode_uses_scheme_specific_proxy() -> None:
+    spec = proxy.ProxySpec(mode="custom", http_url="http://h:1", https_url="http://s:2")
+    assert proxy.client_kwargs(spec, "http://x.com")["proxy"] == "http://h:1"
+    assert proxy.client_kwargs(spec, "https://x.com")["proxy"] == "http://s:2"
 
 
-def test_http_mode_only_proxies_http() -> None:
-    spec = proxy.ProxySpec(mode="http", url="127.0.0.1:7890")
-    assert proxy.client_kwargs(spec, "http://x.com").get("proxy") == "127.0.0.1:7890"
-    assert "proxy" not in proxy.client_kwargs(spec, "https://x.com")
+def test_custom_mode_without_any_url_is_direct() -> None:
+    assert proxy.client_kwargs(proxy.ProxySpec(mode="custom"), "https://x.com") == {
+        "trust_env": False
+    }
 
 
-def test_https_mode_only_proxies_https() -> None:
-    spec = proxy.ProxySpec(mode="https", url="127.0.0.1:7890")
-    assert proxy.client_kwargs(spec, "https://x.com").get("proxy") == "127.0.0.1:7890"
-    assert "proxy" not in proxy.client_kwargs(spec, "http://x.com")
-
-
-def test_empty_url_means_direct() -> None:
-    spec = proxy.ProxySpec(mode="custom", url="")
-    assert proxy.client_kwargs(spec, "https://x.com") == {"trust_env": False}
-    assert spec.configured is False
+def test_no_proxy_wins_over_custom() -> None:
+    spec = proxy.ProxySpec(mode="custom", https_url="http://h:1", patterns=["cloudflare.com"])
+    assert proxy.client_kwargs(spec, "https://www.cloudflare.com/x") == {"trust_env": False}
 
 
 @pytest.mark.asyncio
@@ -137,35 +165,26 @@ async def test_build_client_survives_unusable_env_proxy(monkeypatch: pytest.Monk
     assert response.status_code == 200
 
 
-def test_describe() -> None:
-    assert proxy.describe(proxy.ProxySpec(mode="system")) == "跟随系统"
-    assert proxy.describe(proxy.ProxySpec(mode="custom", url="a:1")) == "a:1"
-    assert "直连" in proxy.describe(proxy.ProxySpec(mode="http", url=""))
+# ---------- 描述 ----------
+
+
+def test_describe_system() -> None:
+    spec = proxy.ProxySpec(mode="system")
+    assert proxy.describe(spec) == "跟随系统"
+    assert proxy.describe(spec, "https://x.com") == "跟随系统"
 
 
 def test_describe_reports_no_proxy_bypass() -> None:
     """命中 NO_PROXY 时不能还写着「经由 <代理>」——这条文案就是告诉用户走了哪条路。"""
-    spec = proxy.ProxySpec(mode="custom", url="127.0.0.1:7890", patterns=["cloudflare.com"])
+    spec = proxy.ProxySpec(mode="custom", https_url="127.0.0.1:7890", patterns=["cloudflare.com"])
     assert (
         proxy.describe(spec, "https://www.cloudflare.com/cdn-cgi/trace") == "直连（NO_PROXY 命中）"
     )
     assert proxy.describe(spec, "https://example.com/") == "127.0.0.1:7890"
 
 
-def test_proxy_test_message_names_the_bypass(auth_client: TestClient) -> None:
-    auth_client.patch(
-        "/api/proxy",
-        json={"mode": "custom", "url": "http://127.0.0.1:9", "no_proxy": "cloudflare.com"},
-    )
-    with respx.mock:
-        respx.get("https://www.cloudflare.com/cdn-cgi/trace").mock(
-            return_value=httpx.Response(200, text="ok")
-        )
-        body = auth_client.post("/api/proxy/test").json()
-
-    assert body["ok"] is True
-    assert "NO_PROXY" in body["message"]
-    assert "127.0.0.1:9" not in body["message"]
+def test_describe_without_address() -> None:
+    assert "直连" in proxy.describe(proxy.ProxySpec(mode="custom"), "https://x.com")
 
 
 # ---------- 测试连接 ----------
@@ -183,7 +202,7 @@ def test_proxy_test_reports_latency(auth_client: TestClient) -> None:
     assert isinstance(body["latency_ms"], int)
 
 
-def test_proxy_test_requires_url_for_non_system_mode(auth_client: TestClient) -> None:
+def test_proxy_test_requires_an_address_in_custom_mode(auth_client: TestClient) -> None:
     auth_client.patch("/api/proxy", json={"mode": "custom"})
     body = auth_client.post("/api/proxy/test").json()
     assert body["ok"] is False
@@ -197,3 +216,19 @@ def test_proxy_test_reports_upstream_error(auth_client: TestClient) -> None:
 
     assert body["ok"] is False
     assert "502" in body["message"]
+
+
+def test_proxy_test_message_names_the_bypass(auth_client: TestClient) -> None:
+    auth_client.patch(
+        "/api/proxy",
+        json={"mode": "custom", "https_url": "http://127.0.0.1:9", "no_proxy": "cloudflare.com"},
+    )
+    with respx.mock:
+        respx.get("https://www.cloudflare.com/cdn-cgi/trace").mock(
+            return_value=httpx.Response(200, text="ok")
+        )
+        body = auth_client.post("/api/proxy/test").json()
+
+    assert body["ok"] is True
+    assert "NO_PROXY" in body["message"]
+    assert "127.0.0.1:9" not in body["message"]

@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
+import { Plus, Rss } from 'lucide-react';
 
 import { flattenItems, useFeeds, useFolders, useItems, useSidebarSummary } from '../../api/hooks';
 import { Resizer } from '../../components/Resizer';
 import { useReaderSearch } from '../../hooks/useReaderSearch';
+import { Button } from '../../components/Button';
 import { applyItem, applyState, viewTitle } from '../../lib/scope';
 import { LIST_KEY, LIST_SPLIT, loadWidth } from '../../lib/split';
 import { useT, type Strings } from '../../lib/i18n';
 import type { SidebarSummary } from '../../types';
+import { AddSourceDialog } from './AddSourceDialog';
 import { ArticlePane } from './ArticlePane';
 import { ItemList } from './ItemList';
 import { PictureWall } from './PictureWall';
@@ -18,6 +21,7 @@ export function ReaderPage() {
   const t = useT();
   const { search, update } = useReaderSearch();
   const [listWidth, setListWidth] = useState(() => loadWidth(LIST_KEY, LIST_SPLIT));
+  const [addOpen, setAddOpen] = useState(false);
 
   const itemsQuery = useItems(search);
   const feeds = useFeeds(null);
@@ -25,6 +29,9 @@ export function ReaderPage() {
   const summary = useSidebarSummary();
 
   const items = flattenItems(itemsQuery.data?.pages);
+  // 一个源都没有时，内容区给「添加订阅源」的空态（设计稿的首页）
+  const noFeeds = summary.data ? summary.data.feed_count === 0 : false;
+  const defaultFolderId = search.folder && search.folder !== 'ungrouped' ? search.folder : null;
   const canLoadMore = Boolean(itemsQuery.hasNextPage) && !itemsQuery.isFetchingNextPage;
   const loadMore = () => {
     if (canLoadMore) void itemsQuery.fetchNextPage();
@@ -56,6 +63,51 @@ export function ReaderPage() {
       <div className="flex h-full items-center justify-center bg-surface text-sm text-ink-3">
         {t.loading}
       </div>
+    );
+  }
+
+  if (noFeeds && mode === 'list') {
+    return (
+      <>
+        <ItemList
+          title={title}
+          subtitle={subtitle}
+          items={[]}
+          search={search}
+          selectedId={null}
+          onSelect={() => {}}
+          onState={(state) => update(applyState(state, search))}
+          hasMore={false}
+          loadingMore={false}
+          onLoadMore={() => {}}
+          listWidth={listWidth}
+          onAddSource={() => setAddOpen(true)}
+        />
+        <Resizer
+          label={t.list.resizeList}
+          width={listWidth}
+          onChange={setListWidth}
+          config={LIST_SPLIT}
+          storageKey={LIST_KEY}
+        />
+        <div className="flex h-full min-w-0 flex-1 flex-col items-center justify-center bg-surface">
+          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-soft text-brand-ink">
+            <Rss size={22} />
+          </span>
+          <p className="mt-5 text-xl font-bold text-ink">{t.addSource.emptyTitle}</p>
+          <p className="mt-2 text-xs text-ink-2">{t.addSource.emptyHint}</p>
+          <Button
+            variant="solid"
+            className="mt-6"
+            icon={<Plus size={15} />}
+            onClick={() => setAddOpen(true)}
+          >
+            {t.addSource.listEntry}
+          </Button>
+          <p className="mt-4 text-2xs text-ink-3">{t.addSource.emptyNote}</p>
+        </div>
+        <AddSourceDialog open={addOpen} onOpenChange={setAddOpen} defaultFolderId={defaultFolderId} />
+      </>
     );
   }
 
@@ -102,6 +154,7 @@ export function ReaderPage() {
         loadingMore={itemsQuery.isFetchingNextPage}
         onLoadMore={loadMore}
         listWidth={listWidth}
+        onAddSource={() => setAddOpen(true)}
       />
 
       <Resizer
@@ -117,6 +170,8 @@ export function ReaderPage() {
         search={search}
         onNavigate={(id) => update(applyItem(id, search), { replace: true })}
       />
+
+      <AddSourceDialog open={addOpen} onOpenChange={setAddOpen} defaultFolderId={defaultFolderId} />
     </div>
   );
 }

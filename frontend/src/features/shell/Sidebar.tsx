@@ -1,12 +1,12 @@
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import * as ContextMenu from '@radix-ui/react-context-menu';
 import {
   Bookmark,
   ChevronDown,
   ChevronRight,
   FileText,
+  FolderPlus,
   Image as ImageIcon,
   LayoutGrid,
-  MoreHorizontal,
   Pencil,
   Plus,
   Rss,
@@ -14,7 +14,7 @@ import {
   Trash2,
   Video,
 } from 'lucide-react';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 
 import {
   useCreateFolder,
@@ -26,10 +26,11 @@ import {
 } from '../../api/hooks';
 import { Avatar, SourceLogo } from '../../components/Avatar';
 import { IconButton } from '../../components/Button';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { SectionLabel, TextInput } from '../../components/Field';
 import { useReaderSearch } from '../../hooks/useReaderSearch';
-import { UNGROUPED, applyFeed, applyFolder, applyNav, activeNav } from '../../lib/scope';
 import { useT } from '../../lib/i18n';
+import { UNGROUPED, applyFeed, applyFolder, applyNav, activeNav } from '../../lib/scope';
 import type { Feed, NavKey, ReaderSearch, User } from '../../types';
 import { ProfileMenu } from './ProfileMenu';
 
@@ -41,6 +42,9 @@ const NAV_ICONS: Record<NavKey, typeof LayoutGrid> = {
   favorites: Bookmark,
 };
 
+const MENU_ITEM =
+  'flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none data-[highlighted]:bg-subtle data-[disabled]:opacity-40';
+
 interface SidebarProps {
   user: User | null;
   search: ReaderSearch;
@@ -51,17 +55,11 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
   const t = useT();
   const { update } = useReaderSearch();
 
-  const navLabels: Record<NavKey, string> = {
-    all: t.nav.all,
-    essays: t.nav.essays,
-    pictures: t.nav.pictures,
-    videos: t.nav.videos,
-    favorites: t.nav.favoritesItem,
-  };
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
 
   const summary = useSidebarSummary();
   const folders = useFolders();
@@ -73,6 +71,14 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
   const counts = summary.data;
   const current = activeNav(search);
   const folderList = folders.data?.items ?? [];
+
+  const navLabels: Record<NavKey, string> = {
+    all: t.nav.all,
+    essays: t.nav.essays,
+    pictures: t.nav.pictures,
+    videos: t.nav.videos,
+    favorites: t.nav.favoritesItem,
+  };
 
   const feedsByFolder = useMemo(() => {
     const map = new Map<string, Feed[]>();
@@ -87,6 +93,11 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
 
   const needle = query.trim().toLowerCase();
   const matches = (value: string) => needle === '' || value.toLowerCase().includes(needle);
+
+  const newFolder = () => {
+    const name = window.prompt(t.folderMenu.promptName);
+    if (name?.trim()) createFolder.mutate(name.trim());
+  };
 
   const navCount = (key: NavKey): number => {
     if (key === 'favorites') return counts?.favorites ?? 0;
@@ -167,154 +178,136 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
           <span className="text-xs text-ink-3">{counts?.favorites ?? 0}</span>
         </button>
 
-        <div className="mt-4 mb-2 flex items-center justify-between pr-2">
-          <SectionLabel>{t.nav.folders}</SectionLabel>
-          <IconButton
-            label={t.nav.newFolder}
-            size={22}
-            onClick={() => {
-              const name = window.prompt(t.nav.folderName);
-              if (name?.trim()) createFolder.mutate(name.trim());
-            }}
-          >
-            <Plus size={13} />
-          </IconButton>
-        </div>
+        {/* 整个「RSS 目录」区块都能右键：在空白处右键只给新建，在目录上右键给三项 */}
+        <ContextMenu.Root>
+          <ContextMenu.Trigger asChild>
+            <div>
+              <div className="mt-4 mb-2 flex items-center justify-between pr-2">
+                <SectionLabel>{t.nav.folders}</SectionLabel>
+                <IconButton label={t.nav.newFolder} size={22} onClick={newFolder}>
+                  <Plus size={13} />
+                </IconButton>
+              </div>
 
-        {folderList.length === 0 ? (
-          <p className="px-4 py-2 text-xs text-ink-3">{t.nav.emptyFolders}</p>
-        ) : null}
+              {folderList.length === 0 ? (
+                <p className="px-4 py-2 text-xs text-ink-3">{t.nav.emptyFolders}</p>
+              ) : null}
 
-        <ul>
-          {folderList
-            .filter((folder) => matches(folder.name))
-            .map((folder) => {
-              const isOpen = expanded.has(folder.id);
-              const selected = search.folder === folder.id;
-              const children = feedsByFolder.get(folder.id) ?? [];
-              return (
-                <li key={folder.id}>
-                  <div
-                    className={`group flex h-[34px] items-center rounded-lg pr-1 ${
-                      selected ? 'bg-soft' : ''
-                    }`}
-                  >
-                    <IconButton
-                      label={isOpen ? t.nav.collapseFolder : t.nav.expandFolder}
-                      size={22}
-                      className="ml-1"
-                      onClick={() =>
-                        setExpanded((previous) => {
-                          const next = new Set(previous);
-                          if (next.has(folder.id)) next.delete(folder.id);
-                          else next.add(folder.id);
-                          return next;
-                        })
-                      }
-                    >
-                      {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                    </IconButton>
-
-                    {renaming === folder.id ? (
-                      <input
-                        autoFocus
-                        defaultValue={folder.name}
-                        className="h-7 min-w-0 flex-1 rounded-md border border-line bg-surface px-2 text-sm outline-none"
-                        onBlur={(event) => {
-                          const name = event.target.value.trim();
-                          if (name && name !== folder.name) {
-                            renameFolder.mutate({ id: folder.id, name });
-                          }
-                          setRenaming(null);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') event.currentTarget.blur();
-                          if (event.key === 'Escape') setRenaming(null);
-                        }}
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => update(applyFolder(folder.id, search))}
-                        className={`min-w-0 flex-1 truncate text-left text-sm ${
-                          selected ? 'text-on-soft' : 'text-ink'
-                        }`}
-                      >
-                        {folder.name}
-                      </button>
-                    )}
-
-                    <span className="px-2 text-xs text-ink-3">
-                      {counts?.folders[folder.id] ?? 0}
-                    </span>
-
-                    <DropdownMenu.Root>
-                      <DropdownMenu.Trigger asChild>
-                        <button
-                          type="button"
-                          aria-label={t.nav.rowActions}
-                          className="hidden h-6 w-6 items-center justify-center rounded-md text-ink-3 hover:bg-subtle group-hover:flex"
-                        >
-                          <MoreHorizontal size={14} />
-                        </button>
-                      </DropdownMenu.Trigger>
-                      <DropdownMenu.Portal>
-                        <DropdownMenu.Content
-                          sideOffset={4}
-                          className="z-50 min-w-36 rounded-lg border border-line bg-surface p-1 text-sm shadow-[var(--shadow-pop)]"
-                        >
-                          <MenuItem
-                            icon={<Pencil size={13} />}
-                            onSelect={() => setRenaming(folder.id)}
-                          >
-                            {t.nav.rename}
-                          </MenuItem>
-                          <MenuItem
-                            danger
-                            icon={<Trash2 size={13} />}
-                            onSelect={() => deleteFolder.mutate(folder.id)}
-                          >
-                            {t.nav.deleteFolder}
-                          </MenuItem>
-                        </DropdownMenu.Content>
-                      </DropdownMenu.Portal>
-                    </DropdownMenu.Root>
-                  </div>
-
-                  {isOpen ? (
-                    <ul className="mt-0.5 mb-1 space-y-0.5 pl-8">
-                      {children.length === 0 ? (
-                        <li className="px-2 py-1 text-xs text-ink-3">{t.nav.emptyFolder}</li>
-                      ) : null}
-                      {children
-                        .filter((feed) => matches(feed.title))
-                        .map((feed) => (
-                          <li key={feed.id}>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                update(applyFeed(feed.id, applyFolder(folder.id, search)))
-                              }
-                              className={`flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-left text-sm transition-colors ${
-                                search.feed === feed.id
-                                  ? 'bg-soft text-on-soft'
-                                  : 'text-ink hover:bg-subtle'
-                              }`}
+              <ul>
+                {folderList
+                  .filter((folder) => matches(folder.name))
+                  .map((folder) => {
+                    const isOpen = expanded.has(folder.id);
+                    const selected = search.folder === folder.id;
+                    const children = feedsByFolder.get(folder.id) ?? [];
+                    return (
+                      <li key={folder.id}>
+                        <ContextMenu.Root>
+                          <ContextMenu.Trigger asChild>
+                            <div
+                              className={`flex h-[34px] items-center rounded-lg pr-1 ${
+                                selected ? 'bg-soft' : ''
+                              } hover:bg-subtle`}
                             >
-                              <SourceLogo name={feed.title} iconUrl={feed.icon_url} size={18} />
-                              <span className="min-w-0 flex-1 truncate">{feed.title}</span>
-                              <span className="text-xs text-ink-3">
-                                {counts?.feeds[feed.id] ?? 0}
+                              <IconButton
+                                label={isOpen ? t.nav.collapseFolder : t.nav.expandFolder}
+                                size={22}
+                                className="ml-1"
+                                onClick={() =>
+                                  setExpanded((previous) => {
+                                    const next = new Set(previous);
+                                    if (next.has(folder.id)) next.delete(folder.id);
+                                    else next.add(folder.id);
+                                    return next;
+                                  })
+                                }
+                              >
+                                {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                              </IconButton>
+
+                              {renaming === folder.id ? (
+                                <input
+                                  autoFocus
+                                  defaultValue={folder.name}
+                                  className="h-7 min-w-0 flex-1 rounded-md border border-line bg-surface px-2 text-sm outline-none"
+                                  onBlur={(event) => {
+                                    const name = event.target.value.trim();
+                                    if (name && name !== folder.name) {
+                                      renameFolder.mutate({ id: folder.id, name });
+                                    }
+                                    setRenaming(null);
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') event.currentTarget.blur();
+                                    if (event.key === 'Escape') setRenaming(null);
+                                  }}
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => update(applyFolder(folder.id, search))}
+                                  className={`min-w-0 flex-1 truncate text-left text-sm ${
+                                    selected ? 'text-on-soft' : 'text-ink'
+                                  }`}
+                                >
+                                  {folder.name}
+                                </button>
+                              )}
+
+                              <span className="px-2 text-xs text-ink-3">
+                                {counts?.folders[folder.id] ?? 0}
                               </span>
-                            </button>
-                          </li>
-                        ))}
-                    </ul>
-                  ) : null}
-                </li>
-              );
-            })}
-        </ul>
+                            </div>
+                          </ContextMenu.Trigger>
+                          <FolderMenu
+                            onNew={newFolder}
+                            onRename={() => setRenaming(folder.id)}
+                            onDelete={() => setDeleting(folder)}
+                          />
+                        </ContextMenu.Root>
+
+                        {isOpen ? (
+                          <ul className="mt-0.5 mb-1 space-y-0.5 pl-8">
+                            {children.length === 0 ? (
+                              <li className="px-2 py-1 text-xs text-ink-3">{t.nav.emptyFolder}</li>
+                            ) : null}
+                            {children
+                              .filter((feed) => matches(feed.title))
+                              .map((feed) => (
+                                <li key={feed.id}>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      update(applyFeed(feed.id, applyFolder(folder.id, search)))
+                                    }
+                                    className={`flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-left text-sm transition-colors ${
+                                      search.feed === feed.id
+                                        ? 'bg-soft text-on-soft'
+                                        : 'text-ink hover:bg-subtle'
+                                    }`}
+                                  >
+                                    <SourceLogo
+                                      name={feed.title}
+                                      iconUrl={feed.icon_url}
+                                      size={18}
+                                    />
+                                    <span className="min-w-0 flex-1 truncate">{feed.title}</span>
+                                    <span className="text-xs text-ink-3">
+                                      {counts?.feeds[feed.id] ?? 0}
+                                    </span>
+                                  </button>
+                                </li>
+                              ))}
+                          </ul>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+              </ul>
+            </div>
+          </ContextMenu.Trigger>
+          <FolderMenu onNew={newFolder} />
+        </ContextMenu.Root>
 
         <div className="mt-4 mb-2">
           <SectionLabel>{t.nav.ungrouped}</SectionLabel>
@@ -372,30 +365,52 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
           </button>
         </ProfileMenu>
       </footer>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleting(null);
+        }}
+        title={t.folderMenu.deleteTitle}
+        body={deleting ? t.folderMenu.deleteBody(deleting.name) : ''}
+        pending={deleteFolder.isPending}
+        onConfirm={() => {
+          if (deleting) deleteFolder.mutate(deleting.id);
+          setDeleting(null);
+        }}
+      />
     </aside>
   );
 }
 
-function MenuItem({
-  icon,
-  children,
-  onSelect,
-  danger = false,
+/** 目录右键菜单。空白处右键时只给「新建目录」，重命名/删除置灰。 */
+function FolderMenu({
+  onNew,
+  onRename,
+  onDelete,
 }: {
-  icon: ReactNode;
-  children: ReactNode;
-  onSelect: () => void;
-  danger?: boolean;
+  onNew: () => void;
+  onRename?: () => void;
+  onDelete?: () => void;
 }) {
+  const t = useT();
   return (
-    <DropdownMenu.Item
-      onSelect={onSelect}
-      className={`flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 outline-none data-[highlighted]:bg-subtle ${
-        danger ? 'text-danger-ink' : 'text-ink'
-      }`}
-    >
-      {icon}
-      {children}
-    </DropdownMenu.Item>
+    <ContextMenu.Portal>
+      <ContextMenu.Content className="z-50 min-w-[176px] rounded-[10px] border border-line bg-surface p-1 shadow-[var(--shadow-pop)]">
+        <ContextMenu.Item onSelect={onNew} className={MENU_ITEM}>
+          <FolderPlus size={15} className="text-ink-3" />
+          {t.folderMenu.newFolder}
+        </ContextMenu.Item>
+        <ContextMenu.Item onSelect={onRename} disabled={!onRename} className={MENU_ITEM}>
+          <Pencil size={15} className="text-ink-3" />
+          {t.folderMenu.renameFolder}
+        </ContextMenu.Item>
+        <ContextMenu.Separator className="my-1 h-px bg-line" />
+        <ContextMenu.Item onSelect={onDelete} disabled={!onDelete} className={`${MENU_ITEM} text-danger-ink`}>
+          <Trash2 size={15} className="text-danger" />
+          {t.folderMenu.deleteFolder}
+        </ContextMenu.Item>
+      </ContextMenu.Content>
+    </ContextMenu.Portal>
   );
 }

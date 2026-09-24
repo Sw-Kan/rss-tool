@@ -3,11 +3,12 @@ import { useEffect, useState, type ReactNode } from 'react';
 
 import { useCreateRule, useDeleteRule, useRules, useUpdateRule } from '../../api/hooks';
 import { Button } from '../../components/Button';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Switch } from '../../components/Field';
 import { useT, type Strings } from '../../lib/i18n';
 import type { Rule, RuleActionType, RuleCondition, RuleTrigger } from '../../types';
 
-const TRIGGERS: RuleTrigger[] = ['item_arrived', 'video_arrived', 'picture_arrived'];
+const TRIGGERS: RuleTrigger[] = ['item_arrived', 'video_arrived', 'picture_arrived', 'schedule'];
 const ACTIONS: RuleActionType[] = [
   'favorite',
   'mark_read',
@@ -17,7 +18,7 @@ const ACTIONS: RuleActionType[] = [
   'custom_export',
 ];
 
-/** 条件的预设：下拉里显示的就是「字段 + 运算符 + 值」的完整描述。 */
+/** 条件预设。顺序即菜单顺序，`value-less` 的项选中后直接落到输入框。 */
 const CONDITION_PRESETS: { field: RuleCondition['field']; op: RuleCondition['op'] }[] = [
   { field: 'title', op: 'contains' },
   { field: 'title', op: 'eq' },
@@ -26,14 +27,47 @@ const CONDITION_PRESETS: { field: RuleCondition['field']; op: RuleCondition['op'
   { field: 'channel', op: 'eq' },
   { field: 'feed', op: 'contains' },
   { field: 'kind', op: 'eq' },
+  { field: 'favorite', op: 'eq' },
+  { field: 'read', op: 'eq' },
 ];
 
-function triggerLabel(t: Strings, trigger: RuleTrigger): string {
+/** 值固定为「是 / 否」的条件，UI 用两格选择器而不是文本输入。 */
+const BOOLEAN_FIELDS: RuleCondition['field'][] = ['favorite', 'read'];
+
+/** 只列出真的返回字符串的文案键：否则 t.auto[key] 会带上函数类型的键。 */
+type ConditionHeadKey =
+  | 'condTitleContains'
+  | 'condTitleEq'
+  | 'condChannelEq'
+  | 'condFeedContains'
+  | 'condWordGt'
+  | 'condWordLt'
+  | 'condKindEq'
+  | 'condFavorite'
+  | 'condRead';
+
+const CONDITION_HEADS: Record<string, ConditionHeadKey> = {
+  'title:contains': 'condTitleContains',
+  'title:eq': 'condTitleEq',
+  'channel:eq': 'condChannelEq',
+  'feed:contains': 'condFeedContains',
+  'word_count:gt': 'condWordGt',
+  'word_count:lt': 'condWordLt',
+  'kind:eq': 'condKindEq',
+  'favorite:eq': 'condFavorite',
+  'read:eq': 'condRead',
+};
+
+function triggerLabel(t: Strings, rule: { trigger: RuleTrigger; schedule_time: string | null }): string {
+  if (rule.trigger === 'schedule') {
+    return `${t.auto.scheduleAt} ${rule.schedule_time ?? '08:00'}`;
+  }
   return {
     item_arrived: t.auto.triggerItem,
     video_arrived: t.auto.triggerVideo,
     picture_arrived: t.auto.triggerPicture,
-  }[trigger];
+    schedule: t.auto.triggerSchedule,
+  }[rule.trigger];
 }
 
 function actionLabel(t: Strings, action: RuleActionType): string {
@@ -48,27 +82,23 @@ function actionLabel(t: Strings, action: RuleActionType): string {
 }
 
 function kindLabel(t: Strings, value: string): string {
-  return { article: t.auto.kindArticle, picture: t.auto.kindPicture, video: t.auto.kindVideo }[
+  return (
+    { article: t.auto.kindArticle, picture: t.auto.kindPicture, video: t.auto.kindVideo }[value] ??
     value
-  ] ?? value;
+  );
 }
 
-const CONDITION_HEADS: Record<string, keyof Strings['auto']> = {
-  'title:contains': 'condTitleContains',
-  'title:eq': 'condTitleEq',
-  'channel:eq': 'condChannelEq',
-  'feed:contains': 'condFeedContains',
-  'word_count:gt': 'condWordGt',
-  'word_count:lt': 'condWordLt',
-  'kind:eq': 'condKindEq',
-};
-
-/** 条件的完整描述，例如「标题包含 “Rust”」「字数大于 3000」。 */
-function conditionLabel(t: Strings, condition: RuleCondition): string {
+/** 条件的完整描述，例如「标题包含 “Rust”」「字数大于 3000」「属于收藏 是」。 */
+export function conditionLabel(t: Strings, condition: RuleCondition): string {
   const key = CONDITION_HEADS[`${condition.field}:${condition.op}`];
   if (!key) return t.auto.editValue;
   const head = t.auto[key];
+
   if (!condition.value) return head;
+  if (BOOLEAN_FIELDS.includes(condition.field)) {
+    const word = condition.value === 'true' ? t.auto.valueOn : t.auto.valueOff;
+    return `${head} ${word}`;
+  }
   const value = condition.field === 'kind' ? kindLabel(t, condition.value) : condition.value;
   return `${head} “${value}”`;
 }
@@ -118,17 +148,31 @@ function RuleCard({ rule }: { rule: Rule }) {
   const remove = useDeleteRule();
 
   const [name, setName] = useState(rule.name);
-  const [editingValue, setEditingValue] = useState(false);
-  const [value, setValue] = useState(rule.condition.value);
+  const [editing, setEditing] = useState<number | null>(null);
+  const [draft, setDraft] = useState('');
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => setName(rule.name), [rule.name]);
-  useEffect(() => setValue(rule.condition.value), [rule.condition.value]);
+  useEffect(() => setEditing(null), [rule.conditions.length]);
 
   const patch = (body: Partial<Rule>) => update.mutate({ id: rule.id, ...body });
 
+  const setCondition = (index: number, next: RuleCondition) =>
+    patch({ conditions: rule.conditions.map((item, i) => (i === index ? next : item)) });
+
+  const addCondition = () => {
+    const next = [...rule.conditions, { field: 'title' as const, op: 'contains' as const, value: '' }];
+    patch({ conditions: next });
+    setEditing(next.length - 1);
+    setDraft('');
+  };
+
+  const removeCondition = (index: number) =>
+    patch({ conditions: rule.conditions.filter((_, i) => i !== index) });
+
   return (
     <div className="rounded-xl border border-line bg-page px-4 py-3">
-      <div className="group flex items-center gap-2">
+      <div className="flex items-center gap-2">
         <Zap size={15} className="shrink-0 text-ink-3" />
         <input
           aria-label={t.auto.ruleName}
@@ -152,68 +196,130 @@ function RuleCard({ rule }: { rule: Rule }) {
         <button
           type="button"
           aria-label={t.auto.deleteRule}
-          onClick={() => remove.mutate(rule.id)}
+          onClick={() => setConfirming(true)}
           className="inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-subtle hover:text-danger-ink"
         >
           <Trash2 size={15} />
         </button>
       </div>
 
-      <div className="mt-3 grid grid-cols-[1fr_1fr_176px] gap-5">
-        <Column label={t.auto.when}>
-          <SelectBox
-            icon={<Clock size={15} />}
-            text={triggerLabel(t, rule.trigger)}
-            options={TRIGGERS.map((trigger) => ({
-              key: trigger,
-              label: triggerLabel(t, trigger),
-              selected: trigger === rule.trigger,
-              onSelect: () => patch({ trigger }),
-            }))}
-          />
-        </Column>
+      <div className="mt-3 space-y-2">
+        <Row label={t.auto.when}>
+          <TriggerBox rule={rule} onPick={(trigger) => patch({ trigger })} />
+        </Row>
 
-        <Column label={t.auto.if}>
-          {editingValue ? (
-            <input
-              autoFocus
-              value={value}
-              placeholder={t.auto.editValue}
-              onChange={(event) => setValue(event.target.value)}
-              onBlur={() => {
-                setEditingValue(false);
-                patch({ condition: { ...rule.condition, value: value.trim() } });
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') event.currentTarget.blur();
-                if (event.key === 'Escape') {
-                  setValue(rule.condition.value);
-                  setEditingValue(false);
-                }
-              }}
-              className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-xs text-ink outline-none focus:border-brand"
-            />
-          ) : (
-            <SelectBox
-              icon={<Target size={15} />}
-              text={conditionLabel(t, rule.condition)}
-              options={[
-                ...CONDITION_PRESETS.map((preset) => ({
-                  key: `${preset.field}:${preset.op}`,
-                  label: conditionLabel(t, { ...preset, value: '' }),
-                  selected:
-                    preset.field === rule.condition.field && preset.op === rule.condition.op,
-                  onSelect: () => {
-                    patch({ condition: { ...rule.condition, field: preset.field, op: preset.op } });
-                    setEditingValue(true);
-                  },
-                })),
-              ]}
-            />
-          )}
-        </Column>
+        <Row label={t.auto.if}>
+          <div className="space-y-2">
+            {rule.conditions.map((condition, index) => (
+              <div key={index}>
+                {index > 0 ? (
+                  <button
+                    type="button"
+                    aria-label={rule.join === 'and' ? t.auto.joinAnd : t.auto.joinOr}
+                    onClick={() => patch({ join: rule.join === 'and' ? 'or' : 'and' })}
+                    className="mb-2 inline-flex h-6 items-center gap-1 rounded-full bg-soft px-3 text-[11px] font-semibold text-on-soft"
+                  >
+                    {rule.join === 'and' ? t.auto.joinAnd : t.auto.joinOr}
+                    <ChevronDown size={12} />
+                  </button>
+                ) : null}
 
-        <Column label={t.auto.then}>
+                <div className="flex items-center gap-2">
+                  {editing === index ? (
+                    BOOLEAN_FIELDS.includes(condition.field) ? (
+                      <div className="flex h-10 flex-1 items-center gap-1 rounded-lg bg-subtle p-1">
+                        {[
+                          { value: 'true', label: t.auto.valueOn },
+                          { value: 'false', label: t.auto.valueOff },
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            aria-pressed={condition.value === option.value}
+                            onClick={() => {
+                              setCondition(index, { ...condition, value: option.value });
+                              setEditing(null);
+                            }}
+                            className={`h-8 flex-1 rounded-md text-xs ${
+                              condition.value === option.value
+                                ? 'bg-surface font-semibold text-ink'
+                                : 'font-medium text-ink-2 hover:text-ink'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <input
+                        autoFocus
+                        value={draft}
+                        placeholder={t.auto.editValue}
+                        onChange={(event) => setDraft(event.target.value)}
+                        onBlur={() => {
+                          setEditing(null);
+                          setCondition(index, { ...condition, value: draft.trim() });
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') event.currentTarget.blur();
+                          if (event.key === 'Escape') setEditing(null);
+                        }}
+                        className="h-10 min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 text-xs text-ink outline-none focus:border-brand"
+                      />
+                    )
+                  ) : (
+                    <div className="min-w-0 flex-1">
+                      <SelectBox
+                        icon={<Target size={15} />}
+                        text={conditionLabel(t, condition)}
+                        options={CONDITION_PRESETS.map((preset) => ({
+                          key: `${preset.field}:${preset.op}`,
+                          label: conditionLabel(t, { ...preset, value: '' }),
+                          selected:
+                            preset.field === condition.field && preset.op === condition.op,
+                          onSelect: () => {
+                            const sameField = preset.field === condition.field;
+                            setCondition(index, {
+                              field: preset.field,
+                              op: preset.op,
+                              // 换字段就清值：保留旧值容易出现「频道 = Rust」这种怪组合
+                              value: sameField ? condition.value : '',
+                            });
+                            setDraft(sameField ? condition.value : '');
+                            setEditing(index);
+                          },
+                        }))}
+                      />
+                    </div>
+                  )}
+
+                  {rule.conditions.length > 1 ? (
+                    <button
+                      type="button"
+                      aria-label={t.auto.removeCondition}
+                      onClick={() => removeCondition(index)}
+                      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-3 hover:bg-subtle hover:text-danger-ink"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  ) : (
+                    <span className="w-6 shrink-0" />
+                  )}
+                </div>
+              </div>
+            ))}
+
+            <button
+              type="button"
+              onClick={addCondition}
+              className="text-[11px] font-semibold text-brand-ink"
+            >
+              {t.auto.addCondition}
+            </button>
+          </div>
+        </Row>
+
+        <Row label={t.auto.then}>
           <SelectBox
             icon={<Play size={15} />}
             text={actionLabel(t, rule.action.type)}
@@ -224,19 +330,105 @@ function RuleCard({ rule }: { rule: Rule }) {
               onSelect: () => patch({ action: { type: action } }),
             }))}
           />
-        </Column>
+        </Row>
       </div>
+
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={t.auto.deleteTitle}
+        body={t.auto.deleteBody(rule.name)}
+        pending={remove.isPending}
+        onConfirm={() => {
+          remove.mutate(rule.id);
+          setConfirming(false);
+        }}
+      />
     </div>
   );
 }
 
-function Column({ label, children }: { label: string; children: ReactNode }) {
+function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="min-w-0">
+    <div>
       <span className="mb-1 block text-[10px] font-semibold tracking-[0.5px] text-ink-3">
         {label}
       </span>
       {children}
+    </div>
+  );
+}
+
+/** 「当」控件：定时触发时行内直接给一个时间输入，读数与设计稿一致（每天 08:00）。 */
+function TriggerBox({ rule, onPick }: { rule: Rule; onPick: (trigger: RuleTrigger) => void }) {
+  const t = useT();
+  const update = useUpdateRule();
+  const [open, setOpen] = useState(false);
+
+  const commitTime = (value: string) => {
+    if (value && value !== rule.schedule_time) {
+      update.mutate({ id: rule.id, schedule_time: value });
+    }
+  };
+
+  return (
+    <div className="relative">
+      <div className="flex h-10 w-full items-center gap-2 rounded-lg border border-line bg-surface px-3">
+        <Clock size={15} className="shrink-0 text-ink-3" />
+        <button
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+          className="min-w-0 flex-1 truncate text-left text-xs text-ink"
+        >
+          {triggerLabel(t, rule)}
+        </button>
+        {rule.trigger === 'schedule' ? (
+          <input
+            type="time"
+            aria-label={t.auto.scheduleAt}
+            value={rule.schedule_time ?? '08:00'}
+            onChange={(event) => commitTime(event.target.value)}
+            className="h-6 w-[76px] shrink-0 rounded border border-line bg-page px-1 text-[11px] text-ink outline-none focus:border-brand"
+          />
+        ) : null}
+        <ChevronDown size={12} className="shrink-0 text-ink-3" />
+      </div>
+
+      {open ? (
+        <>
+          <button
+            type="button"
+            aria-label="close"
+            tabIndex={-1}
+            className="fixed inset-0 z-40 cursor-default"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            role="listbox"
+            className="absolute top-[44px] left-0 z-50 w-full rounded-lg border border-line bg-surface p-1 shadow-[var(--shadow-pop)]"
+          >
+            {TRIGGERS.map((trigger) => (
+              <button
+                key={trigger}
+                type="button"
+                role="option"
+                aria-selected={trigger === rule.trigger}
+                onClick={() => {
+                  onPick(trigger);
+                  setOpen(false);
+                }}
+                className={`block w-full truncate rounded-md px-2.5 py-2 text-left text-xs transition-colors hover:bg-subtle ${
+                  trigger === rule.trigger ? 'font-semibold text-brand-ink' : 'text-ink'
+                }`}
+              >
+                {triggerLabel(t, { trigger, schedule_time: rule.schedule_time })}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -248,8 +440,16 @@ interface Option {
   onSelect: () => void;
 }
 
-/** 40px 的下拉：收起时显示的是一句完整描述（设计稿的「标题包含 “Rust”」）。 */
-function SelectBox({ icon, text, options }: { icon: ReactNode; text: string; options: Option[] }) {
+/** 40px 的下拉：收起时显示的是一句完整描述。 */
+export function SelectBox({
+  icon,
+  text,
+  options,
+}: {
+  icon: ReactNode;
+  text: string;
+  options: Option[];
+}) {
   const [open, setOpen] = useState(false);
 
   return (

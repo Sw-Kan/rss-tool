@@ -1,6 +1,6 @@
 """F4 代理：配置解析 + 按目标地址决定是否走代理。
 
-设计稿的四种模式：默认（跟随系统）/ 本地 HTTP / 本地 HTTPS / 自定义。
+两种模式：`system` 跟随进程环境变量；`custom` 用三个地址按目标协议挑一个。
 
 `no_proxy` 支持三种写法：精确域名、`.example.com` / `*.example.com` 后缀、CIDR
 （如 `192.168.0.0/16`）。CIDR 需要目标 IP，因此调用方要把 SSRF 校验时解析到的地址
@@ -20,19 +20,20 @@ from ..models import ProxyConfig
 
 logger = logging.getLogger("rss-tool.proxy")
 
-MODES = ("system", "http", "https", "custom")
+MODES = ("system", "custom")
 
 
 @dataclass(slots=True)
 class ProxySpec:
     mode: str = "system"
-    url: str = ""
+    http_url: str = ""
+    https_url: str = ""
+    socks5_url: str = ""
     patterns: list[str] = field(default_factory=list)
 
     @property
     def configured(self) -> bool:
-        """是否真的会让流量经过代理。"""
-        return self.mode != "system" and bool(self.url)
+        return self.mode == "custom" and bool(self.http_url or self.https_url or self.socks5_url)
 
 
 def parse_no_proxy(raw: str) -> list[str]:
@@ -43,7 +44,24 @@ def load_spec(db: Session) -> ProxySpec:
     row = db.get(ProxyConfig, "default")
     if row is None:
         return ProxySpec()
-    return ProxySpec(mode=row.mode, url=row.url, patterns=parse_no_proxy(row.no_proxy))
+    return ProxySpec(
+        mode=row.mode,
+        http_url=row.http_url,
+        https_url=row.https_url,
+        socks5_url=row.socks5_url,
+        patterns=parse_no_proxy(row.no_proxy),
+    )
+
+
+def proxy_for(spec: ProxySpec, scheme: str) -> str:
+    """按目标协议挑地址；只填了 SOCKS5 时它作为兜底对所有协议生效。"""
+    if spec.mode != "custom":
+        return ""
+    if scheme == "http":
+        return spec.http_url or spec.socks5_url
+    if scheme == "https":
+        return spec.https_url or spec.socks5_url
+    return spec.socks5_url or spec.https_url or spec.http_url
 
 
 def host_matches(host: str, patterns: list[str]) -> bool:
@@ -91,30 +109,20 @@ def bypass(spec: ProxySpec, host: str, addresses: list[str] | None = None) -> bo
 def client_kwargs(spec: ProxySpec, url: str, addresses: list[str] | None = None) -> dict:
     """给 httpx.AsyncClient 用的参数。
 
-    - `system`：交给 httpx 读进程环境变量。环境里的代理写在 `ALL_PROXY` 之类变量上时
-      可能是 httpx 不认识的 scheme（例如 socks://），此时降级为直连并记警告——否则
-      用户没碰过代理设置，所有订阅都会莫名失败。
-    - `http` / `https`：只代理对应 scheme，另一个 scheme 直连。
-    - `custom`：全部流量走该地址（httpx 支持 socks5:// ，需要 socksio）。
+    - `system`：交给 httpx 读进程环境变量。
+    - `custom`：按目标协议挑地址；一个都没填则直连。
     """
-    host = (urlparse(url).hostname or "").lower()
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+
+    if bypass(spec, host, addresses):
+        return {"trust_env": False}
 
     if spec.mode == "system":
-        if bypass(spec, host, addresses):
-            return {"trust_env": False}
         return {"trust_env": True}
 
-    if not spec.url or bypass(spec, host, addresses):
-        return {"trust_env": False}
-
-    if spec.mode == "custom":
-        return {"trust_env": False, "proxy": spec.url}
-
-    proxied, direct = ("http", "https") if spec.mode == "http" else ("https", "http")
-    if urlparse(url).scheme != proxied:
-        _ = direct
-        return {"trust_env": False}
-    return {"trust_env": False, "proxy": spec.url}
+    chosen = proxy_for(spec, parsed.scheme)
+    return {"trust_env": False, "proxy": chosen} if chosen else {"trust_env": False}
 
 
 def build_client(spec: ProxySpec, url: str, addresses: list[str] | None = None, **kwargs):
@@ -138,8 +146,10 @@ def describe(spec: ProxySpec, url: str | None = None, addresses: list[str] | Non
         host = (urlparse(url).hostname or "").lower()
         if bypass(spec, host, addresses):
             return "直连（NO_PROXY 命中）"
+
     if spec.mode == "system":
         return "跟随系统"
-    if not spec.url:
-        return f"{spec.mode} 未填写地址，按直连"
-    return spec.url
+
+    scheme = urlparse(url).scheme if url else "https"
+    chosen = proxy_for(spec, scheme)
+    return chosen or "直连（未填写代理地址）"

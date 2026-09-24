@@ -8,6 +8,7 @@ from sqlalchemy import Select, and_, func, select
 from sqlalchemy.orm import Session
 
 from ..models import Article, Feed, Subscription, UserItemState
+from .items_query import effective_kind
 
 
 @dataclass(slots=True)
@@ -24,7 +25,7 @@ class SidebarSummary:
 def _base(user_id: str) -> Select:
     state = UserItemState
     return (
-        select(Article.kind, Article.feed_id, Subscription.folder_id)
+        select(effective_kind().label("kind"), Article.feed_id, Subscription.folder_id)
         .join(
             Subscription,
             and_(Subscription.feed_id == Article.feed_id, Subscription.user_id == user_id),
@@ -42,8 +43,11 @@ def sidebar_summary(db: Session, user_id: str) -> SidebarSummary:
 
     grouped = db.execute(
         unread.with_only_columns(
-            Article.kind, Article.feed_id, Subscription.folder_id, func.count().label("n")
-        ).group_by(Article.kind, Article.feed_id, Subscription.folder_id)
+            effective_kind().label("kind"),
+            Article.feed_id,
+            Subscription.folder_id,
+            func.count().label("n"),
+        ).group_by(effective_kind(), Article.feed_id, Subscription.folder_id)
     ).all()
 
     for kind, feed_id, folder_id, count in grouped:

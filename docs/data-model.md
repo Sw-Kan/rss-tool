@@ -48,6 +48,7 @@ SQLite，`backend/data/rss.db`。启动时 `create_all`，**无迁移**：表结
 | folder_id | 可空 = 未分组 |
 | custom_title | 覆盖 feed.title |
 | position | |
+| kind_override | `article` \| `picture` \| `video` \| null（null = 按内容自动判断） |
 
 ## articles — M3
 
@@ -133,8 +134,8 @@ SQLite，`backend/data/rss.db`。启动时 `create_all`，**无迁移**：表结
 
 | 字段 | 说明 |
 |---|---|
-| mode | `system` \| `http` \| `https` \| `custom` |
-| url | 仅 `http` / `https` / `custom` 用；`system` 会被清空 |
+| mode | `system` \| `custom` |
+| http_url / https_url / socks5_url | 自定义模式按目标协议挑选；socks5 作为兜底 |
 | no_proxy | 逗号分隔，支持精确域名、`.suffix`、`*.suffix`、CIDR |
 
 ## automation_rules — M15
@@ -142,11 +143,14 @@ SQLite，`backend/data/rss.db`。启动时 `create_all`，**无迁移**：表结
 | 字段 | 说明 |
 |---|---|
 | id, user_id, name, enabled, position | 按 position 顺序匹配 |
-| trigger | `item_arrived` \| `video_arrived` \| `picture_arrived` |
-| condition | JSON `{field, op, value}`。field × op 有交叉校验（如 `title` 只允许 `contains`/`eq`） |
+| trigger | `item_arrived` \| `video_arrived` \| `picture_arrived` \| `schedule` |
+| schedule_time | `'HH:MM'`，仅 `schedule` 用；按服务器时区解释 |
+| join | `and` \| `or` |
+| conditions | JSON `[{field, op, value}]`，最多 10 条 |
 | action | JSON `{type}`，type ∈ `favorite`/`mark_read`/`mark_unread`/`feishu`/`obsidian`/`custom_export` |
+| last_run_at | 定时规则上次执行时间（UTC），用来保证「每天最多一次」 |
 
-设计稿每条规则只有一个「如果」和一个「则」，所以存单个对象而不是数组。
+`conditions[].field × op` 有交叉校验（`title`/`channel`/`feed` 只允许 `contains`/`eq` 等）。
 
 ## media_cache — M17
 

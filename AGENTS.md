@@ -175,6 +175,7 @@ make lint && make typecheck && make test
 - 代理是**实例级**配置（`proxy_config` 单行）：feed/article 全库共享，同一 URL 只抓一次，"每用户不同代理"在模型上就不成立。
 - 代理的 `NO_PROXY` 支持精确域名、`.suffix` / `*.suffix`、CIDR；CIDR 靠抓取时解析到的 IP 判断。
 - 自动化只在**刷新**触发，且只处理本次新增的文章；「添加订阅」不触发（否则加一个源就会瞬间打出一堆推送）。
+- 定时规则（`trigger=schedule`）的 `HH:MM` 按**服务器时区**解释。Docker 里容器默认 UTC，必须设 `TZ`（compose 已透传，默认 `Asia/Shanghai`），否则「早上八点」会差好几个小时。
 - 推送类动作（飞书 / Obsidian / 自定义接口）每条规则每轮刷新上限 `MAX_PUSH_PER_RUN`（5 条）。集成未配置时记日志跳过，不算命中、不抛错。
 - RSSHub 路由参数是 `name / scope / value`：`scope` 是**路由前缀**，匹配上就把 `name=value` 拼成 query 参数；`ACCESS_KEY` 以 `?key=` 传递。设计稿里「作用范围」写的是服务名（如「知乎 / 微博」），实际语义按路由前缀实现。
 - 自定义导出推的是固定 JSON 结构（title/url/author/feed/channel/kind/published_at/summary），不做用户自定义 schema 模板。

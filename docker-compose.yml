@@ -13,6 +13,8 @@ services:
       EXTRACT_ENABLED: ${EXTRACT_ENABLED:-true}
       MEDIA_CACHE_ENABLED: ${MEDIA_CACHE_ENABLED:-true}
       MEDIA_CACHE_MAX_MB: ${MEDIA_CACHE_MAX_MB:-512}
+      # 定时规则的 HH:MM 按这个时区解释；不设则容器默认 UTC
+      TZ: ${TZ:-Asia/Shanghai}
     volumes:
       - rss-data:/data
     restart: unless-stopped

@@ -26,6 +26,7 @@ import type {
   Integration,
   IntegrationKind,
   IntegrationTest,
+  KindChoice,
   FolderList,
   Item,
   ItemContext,
@@ -158,8 +159,12 @@ export function useDeleteFolder() {
 export function useCreateFeed() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: { url: string; folder_id?: string | null; title?: string }) =>
-      http.post<Feed>('/api/feeds', body),
+    mutationFn: (body: {
+      url: string;
+      folder_id?: string | null;
+      title?: string;
+      kind?: KindChoice;
+    }) => http.post<Feed>('/api/feeds', body),
     onSuccess: () => invalidateSubscriptions(client),
   });
 }
@@ -172,16 +177,19 @@ export function useUpdateFeed() {
       title,
       folderId,
       clearFolder,
+      kind,
     }: {
       id: string;
       title?: string;
       folderId?: string | null;
       clearFolder?: boolean;
+      kind?: KindChoice;
     }) =>
       http.patch<Feed>(`/api/feeds/${id}`, {
         title,
         folder_id: folderId ?? undefined,
         clear_folder: clearFolder ?? false,
+        kind,
       }),
     onSuccess: () => invalidateSubscriptions(client),
   });
@@ -479,6 +487,20 @@ export function useUpdateProxy() {
 export function useTestProxy() {
   return useMutation({
     mutationFn: () => http.post<IntegrationTest>('/api/proxy/test'),
+  });
+}
+
+export function useTestCustomExport() {
+  return useMutation({
+    mutationFn: () => http.post<IntegrationTest>('/api/integrations/custom_export/test'),
+  });
+}
+
+export function useDefaultExportSchema() {
+  return useQuery({
+    queryKey: ['integrations', 'default-schema'],
+    queryFn: () => http.get<{ schema_template: string }>('/api/integrations/custom_export/default-schema'),
+    staleTime: Infinity,
   });
 }
 

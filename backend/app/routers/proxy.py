@@ -30,7 +30,13 @@ def _row(db: DbSession) -> ProxyConfig:
 
 
 def _out(row: ProxyConfig) -> ProxyOut:
-    return ProxyOut(mode=row.mode, url=row.url, no_proxy=row.no_proxy)  # type: ignore[arg-type]
+    return ProxyOut(
+        mode=row.mode,  # type: ignore[arg-type]
+        http_url=row.http_url,
+        https_url=row.https_url,
+        socks5_url=row.socks5_url,
+        no_proxy=row.no_proxy,
+    )
 
 
 @router.get("", response_model=ProxyOut)
@@ -43,22 +49,25 @@ def read_proxy(user: CurrentUser, db: DbSession) -> ProxyOut:
 def update_proxy(payload: ProxyPatch, user: CurrentUser, db: DbSession) -> ProxyOut:
     _ = user
     row = _row(db)
-    before = (row.mode, row.url)
+    before = (row.mode, row.http_url, row.https_url, row.socks5_url, row.no_proxy)
 
     if payload.mode is not None:
         row.mode = payload.mode
-    if payload.url is not None:
-        row.url = payload.url.strip()
+    if payload.http_url is not None:
+        row.http_url = payload.http_url.strip()
+    if payload.https_url is not None:
+        row.https_url = payload.https_url.strip()
+    if payload.socks5_url is not None:
+        row.socks5_url = payload.socks5_url.strip()
     if payload.no_proxy is not None:
         row.no_proxy = payload.no_proxy.strip()
-    if row.mode == "system":
-        row.url = ""
 
     db.commit()
     db.refresh(row)
 
-    # 代理变了，之前的抓取失败很可能已经不复存在；不清掉的话会白等一个重试窗口
-    if (row.mode, row.url) != before:
+    # 代理变了，之前的抓取失败很可能已经不复存在；不清掉的话会白等一个重试窗口。
+    # 切到 system 也保留自定义那几项，切回来还在。
+    if (row.mode, row.http_url, row.https_url, row.socks5_url, row.no_proxy) != before:
         media.clear_failures(db)
 
     return _out(row)
@@ -70,8 +79,8 @@ async def test_proxy(user: CurrentUser, db: DbSession) -> IntegrationTestOut:
     _ = user
     spec = proxy.load_spec(db)
 
-    if spec.mode != "system" and not spec.url:
-        return IntegrationTestOut(ok=False, message="请先填写代理地址")
+    if spec.mode == "custom" and not spec.configured:
+        return IntegrationTestOut(ok=False, message="请先填写至少一个代理地址")
 
     started = time.perf_counter()
     try:

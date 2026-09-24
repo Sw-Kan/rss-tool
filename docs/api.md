@@ -68,8 +68,13 @@ type UserOut = { id: string; username: string; email: string;
 type FeedOut = { id, url, site_url, title, description, icon_url,
                  folder_id: string | null, custom_title: string | null,
                  unread_count: number, last_status: string, last_error: string | null,
-                 last_fetched_at: string | null }
+                 last_fetched_at: string | null,
+                 kind_override: 'auto'|'article'|'picture'|'video' }
 ```
+
+`POST /api/feeds` 与 `PATCH /api/feeds/{id}` 都接受 `kind`（`auto` = 按内容判断）。
+`kind_override` 存在订阅上而不是 feed 上：`articles` 是全局共享的，而「这个源算不算图片源」
+是每个订阅自己的事。查询时用 `COALESCE(subscription.kind_override, article.kind)` 得到生效类型。
 
 ## OPML — M2
 
@@ -166,17 +171,22 @@ type AiResultOut  = { kind, content, model, cached: boolean, tokens_in, tokens_o
 | GET | `/api/integrations` | `{items: IntegrationOut[]}`，四种 kind 都会返回（缺的给默认值） |
 | PUT | `/api/integrations/{kind}` | body: `{enabled?, rsshub?, obsidian?, feishu?, custom_export?}` |
 | POST | `/api/integrations/rsshub/test` | `{ok, message, latency_ms}` |
+| GET | `/api/integrations/custom_export/default-schema` | `{schema_template}`，新建时给前端的默认模板 |
+| POST | `/api/integrations/custom_export/test` | 用一条样本数据真发一次，`{ok, message, latency_ms}` |
 
 ```ts
 type IntegrationOut = { kind: 'rsshub'|'obsidian'|'feishu'|'custom_export'
                         enabled: boolean; updated_at: string | null
                         rsshub?: { base_url, access_key, env, params: RsshubParam[] }
                         obsidian?: { vault_path }; feishu?: { webhook_url }
-                        custom_export?: { endpoint } }
+                        custom_export?: { endpoint, schema_template } }
 type RsshubParam = { name: string; scope: string; value: string; secret: boolean }
 ```
 
 - `access_key` 与 `secret=true` 的参数值只以掩码回传；回传值里只要带 `•` 就视为「没改」。
+- `custom_export.schema_template` 是 JSON 模板，用 `{{变量}}` 占位；可用变量固定 8 个：
+  `title` / `url` / `author` / `feed` / `channel` / `kind` / `published_at` / `summary`。
+  留空则用内置默认结构。模板里出现未知变量或渲染后不是合法 JSON → 400，错误信息会指出具体变量。
 - `POST /api/feeds` 的 `url` 允许是**裸路由**（`/sspai/matrix`），会用这里的 `base_url` 展开；未配置则 400。
 
 ## 自动化 — M15
@@ -190,22 +200,30 @@ type RsshubParam = { name: string; scope: string; value: string; secret: boolean
 
 ```ts
 type RuleOut = { id, name, enabled, position,
-                 trigger: 'item_arrived'|'video_arrived'|'picture_arrived',
-                 condition: { field: 'title'|'word_count'|'channel'|'feed'|'kind',
-                              op: 'contains'|'gt'|'lt'|'eq', value: string },
+                 trigger: 'item_arrived'|'video_arrived'|'picture_arrived'|'schedule',
+                 schedule_time: string | null,   // 仅 trigger='schedule'，'HH:MM'
+                 join: 'and'|'or',
+                 conditions: { field: 'title'|'word_count'|'channel'|'feed'|'kind'|'favorite'|'read',
+                               op: 'contains'|'gt'|'lt'|'eq', value: string }[],
                  action: { type: 'favorite'|'mark_read'|'mark_unread'|'feishu'|'obsidian'|'custom_export' } }
 ```
 
-`field`×`op` 有交叉校验（`title` 只接受 `contains`/`eq`，`word_count` 只接受 `gt`/`lt`/`eq`，`kind` 只接受 `eq`），
-不合法组合 422 —— 否则会写出一条永远不命中的规则。
+- `conditions` 最多 10 条，`join` 决定它们之间是 and 还是 or。
+- `field`×`op` 有交叉校验（`title`/`channel`/`feed` 只接受 `contains`/`eq`，`word_count` 只接受 `gt`/`lt`/`eq`，`kind`/`favorite`/`read` 只接受 `eq`），不合法组合 422 —— 否则会写出一条永远不命中的规则。
+- `favorite` / `read` 的值取 `true` / `false`（阅读状态类条件）。
+- `schedule_time` 只在 `trigger='schedule'` 时保留；换成别的触发会自动清空，避免留下误导性的旧值。
+- 定时规则按**服务器时区**解释 `HH:MM`，每天最多执行一次（靠 `last_run_at` 判重）。
 
 ## 代理 — M16
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/proxy` | `{mode, url, no_proxy}` |
-| PATCH | `/api/proxy` | 同上字段可选；`mode=system` 会清空 `url` |
+| GET | `/api/proxy` | `{mode, http_url, https_url, socks5_url, no_proxy}` |
+| PATCH | `/api/proxy` | 同上字段可选。切到 `system` **不清空**自定义地址，切回来还在 |
 | POST | `/api/proxy/test` | 真实发一次请求，`{ok, message, latency_ms}` |
+
+`mode` 只有 `system` / `custom`。自定义模式下按目标协议挑地址：http → `http_url`，
+https → `https_url`，两者都为空时用 `socks5_url` 兜底。
 
 ## 媒体缓存 — M17
 

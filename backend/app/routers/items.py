@@ -84,8 +84,8 @@ def list_items(
 
 @router.get("/{item_id}", response_model=ItemDetailOut)
 def get_item(item_id: str, user: CurrentUser, db: DbSession) -> ItemDetailOut:
-    article, feed, custom_title, is_read, is_favorite = _fetch_visible(db, user.id, item_id)
-    base = _to_out(article, feed, custom_title, is_read, is_favorite).model_dump()
+    article, feed, custom_title, is_read, is_favorite, kind = _fetch_visible(db, user.id, item_id)
+    base = _to_out(article, feed, custom_title, is_read, is_favorite, kind).model_dump()
     return ItemDetailOut(
         **base,
         content_html=article.content_html or article.summary_html or "",
@@ -106,7 +106,7 @@ def item_context(
     state: str = Query(default="all", pattern="^(all|unread|read)$"),
 ) -> ItemContextOut:
     """返回同过滤条件下的上一篇 / 下一篇与位置，供阅读器上/下篇跳转。"""
-    article, _feed, _title, _read, _fav = _fetch_visible(db, user.id, item_id)
+    article, _feed, _title, _read, _fav, _kind = _fetch_visible(db, user.id, item_id)
     flt = ItemFilter(
         kind=kind, folder_id=folder_id, feed_id=feed_id, favorite=favorite, state=state
     )
@@ -138,11 +138,11 @@ def item_context(
 
 @router.patch("/{item_id}/state", response_model=ItemOut)
 def set_state(item_id: str, payload: ItemStateIn, user: CurrentUser, db: DbSession) -> ItemOut:
-    article, feed, custom_title, _is_read, _is_favorite = _fetch_visible(db, user.id, item_id)
+    article, feed, custom_title, _is_read, _is_favorite, kind = _fetch_visible(db, user.id, item_id)
     row = item_state.set_state(
         db, user.id, article.id, is_read=payload.is_read, is_favorite=payload.is_favorite
     )
-    return _to_out(article, feed, custom_title, row.is_read, row.is_favorite)
+    return _to_out(article, feed, custom_title, row.is_read, row.is_favorite, kind)
 
 
 @router.post("/read", response_model=BulkReadOut)
@@ -155,7 +155,7 @@ def bulk_read(payload: BulkReadIn, user: CurrentUser, db: DbSession) -> BulkRead
 
 def _fetch_visible(
     db: Session, user_id: str, item_id: str
-) -> tuple[Article, Feed, str | None, bool, bool]:
+) -> tuple[Article, Feed, str | None, bool, bool, str]:
     row = db.execute(
         select(
             Article,
@@ -163,6 +163,7 @@ def _fetch_visible(
             Subscription.custom_title,
             UserItemState.is_read,
             UserItemState.is_favorite,
+            items_query.effective_kind().label("effective_kind"),
         )
         .join(Feed, Feed.id == Article.feed_id)
         .join(
@@ -178,7 +179,7 @@ def _fetch_visible(
     ).first()
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="文章不存在")
-    return row[0], row[1], row[2], bool(row[3]), bool(row[4])
+    return row[0], row[1], row[2], bool(row[3]), bool(row[4]), str(row[5])
 
 
 def _to_out(
@@ -187,6 +188,7 @@ def _to_out(
     custom_title: str | None,
     is_read: bool | None,
     is_favorite: bool | None,
+    kind: str | None = None,
 ) -> ItemOut:
     return ItemOut(
         id=article.id,
@@ -197,7 +199,7 @@ def _to_out(
         author=article.author,
         url=article.url,
         published_at=article.published_at,
-        kind=cast(ItemKind, article.kind),
+        kind=cast(ItemKind, kind or article.kind),
         image_url=article.image_url,
         image_width=article.image_width,
         image_height=article.image_height,

@@ -64,7 +64,12 @@ async def create_feed(payload: FeedCreate, user: CurrentUser, db: DbSession) -> 
 
     try:
         subscription = await refresh.create_subscription(
-            db, user, url, folder_id=payload.folder_id, title=payload.title
+            db,
+            user,
+            url,
+            folder_id=payload.folder_id,
+            title=payload.title,
+            kind=payload.kind,
         )
     except FetchError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -91,6 +96,8 @@ def patch_feed(feed_id: str, payload: FeedPatch, user: CurrentUser, db: DbSessio
         if db.get(Folder, payload.folder_id) is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="目录不存在")
         subscription.folder_id = payload.folder_id
+    if payload.kind is not None:
+        subscription.kind_override = None if payload.kind == "auto" else payload.kind
 
     db.commit()
     summary = counts.sidebar_summary(db, user.id)
@@ -156,6 +163,7 @@ def _to_out(subscription: Subscription, feed: Feed, unread: int) -> FeedOut:
     return FeedOut(
         id=feed.id,
         url=feed.url,
+        kind_override=subscription.kind_override or "auto",
         site_url=feed.site_url,
         title=subscription.custom_title or feed.title or feed.url,
         description=feed.description,

@@ -93,6 +93,19 @@ def bulk_set_read(db: Session, user_id: str, article_ids: list[str], is_read: bo
     return len(ids)
 
 
+def is_read(db: Session, user_id: str, article_id: str) -> bool:
+    return bool(
+        db.scalar(
+            select(UserItemState.is_read).where(
+                and_(
+                    UserItemState.user_id == user_id,
+                    UserItemState.article_id == article_id,
+                )
+            )
+        )
+    )
+
+
 def is_favorite(db: Session, user_id: str, article_id: str) -> bool:
     return bool(
         db.scalar(

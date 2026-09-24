@@ -1,5 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { MoreHorizontal, Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 import {
@@ -12,6 +12,7 @@ import {
   useUpdateSettings,
 } from '../../api/hooks';
 import { Button } from '../../components/Button';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { MiniField, Switch } from '../../components/Field';
 import { thousands } from '../../lib/format';
 import { useI18n, useT } from '../../lib/i18n';
@@ -174,6 +175,7 @@ function ProviderCard({ provider, onPatch, onDelete }: ProviderCardProps) {
   const [model, setModel] = useState(provider.model);
   const [key, setKey] = useState('');
   const [editingKey, setEditingKey] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   const commit = (field: 'label' | 'base_url' | 'model', value: string) => {
     const trimmed = value.trim();
@@ -201,39 +203,31 @@ function ProviderCard({ provider, onPatch, onDelete }: ProviderCardProps) {
           className="min-w-0 flex-1 truncate bg-transparent text-sm font-semibold text-ink outline-none"
         />
 
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <button
-              type="button"
-              aria-label={t.ai.providerActions}
-              className="hidden h-5 w-5 items-center justify-center rounded-md text-ink-3 hover:bg-subtle group-hover:flex"
-            >
-              <MoreHorizontal size={14} />
-            </button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content
-              sideOffset={4}
-              align="end"
-              className="z-50 min-w-32 rounded-lg border border-line bg-surface p-1 text-sm shadow-[var(--shadow-pop)]"
-            >
-              <DropdownMenu.Item
-                onSelect={onDelete}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-danger-ink outline-none data-[highlighted]:bg-subtle"
-              >
-                <Trash2 size={13} />
-                {t.ai.deleteProvider}
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
-
         <Switch
           checked={provider.enabled}
           label={t.ai.enabledSwitch(provider.label)}
           onChange={(next) => onPatch({ enabled: next })}
         />
+        <button
+          type="button"
+          aria-label={t.ai.deleteProvider}
+          onClick={() => setConfirming(true)}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-subtle hover:text-danger-ink"
+        >
+          <Trash2 size={15} />
+        </button>
       </div>
+
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={t.ai.deleteTitle}
+        body={t.ai.deleteBody(provider.label)}
+        onConfirm={() => {
+          setConfirming(false);
+          onDelete();
+        }}
+      />
 
       <div className="mt-2.5 grid grid-cols-[1fr_1fr_120px] gap-3">
         <MiniField

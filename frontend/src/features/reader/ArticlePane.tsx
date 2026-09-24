@@ -5,15 +5,22 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Download,
   FileText,
+  Loader2,
+  Languages,
   Share2,
+  Sparkles,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import TurndownService from 'turndown';
 
 import {
+  useAiConfig,
+  useAiResults,
   useBulkRead,
+  useGenerateAi,
   useItem,
   useItemContext,
   useSetItemState,
@@ -44,6 +51,15 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
   const scroller = useRef<HTMLDivElement | null>(null);
   const [readWords, setReadWords] = useState(0);
   const [flash, setFlash] = useState<string | null>(null);
+  const [summaryOpen, setSummaryOpen] = useState(true);
+
+  const aiConfig = useAiConfig();
+  const aiResults = useAiResults(itemId);
+  const generateAi = useGenerateAi();
+
+  const aiReady = (aiConfig.data?.providers ?? []).some((provider) => provider.enabled);
+  const summary = aiResults.data?.summary ?? null;
+  const translatedTitle = aiResults.data?.title_translation ?? null;
 
   const wordCount = detail.data?.word_count ?? 0;
   const html = useMemo(
@@ -51,10 +67,15 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
     [detail.data?.content_html],
   );
 
+  // generateAi.reset 来自 mutation observer，跨渲染稳定，可以安全放进依赖
+  const { reset: resetAi } = generateAi;
+
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
     setReadWords(0);
-  }, [itemId]);
+    setSummaryOpen(true);
+    resetAi();
+  }, [itemId, resetAi]);
 
   useEffect(() => {
     if (!flash) return;
@@ -88,7 +109,6 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
 
   const item = detail.data;
   const progress = wordCount > 0 ? Math.min(1, readWords / wordCount) : 0;
-
   const onScroll = () => {
     const node = scroller.current;
     if (!node || wordCount === 0) return;
@@ -152,6 +172,31 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
         )}
 
         <div className="flex shrink-0 items-center gap-1">
+          {isEssay ? (
+            <>
+              <AiButton
+                label={strings.ai.summarize}
+                icon={<Sparkles size={14} />}
+                active={Boolean(summary)}
+                busy={generateAi.isPending && generateAi.variables?.kind === 'summary'}
+                disabled={!aiReady || generateAi.isPending}
+                onClick={() => {
+                  setSummaryOpen(true);
+                  generateAi.mutate({ articleId: item.id, kind: 'summary' });
+                }}
+              />
+              <AiButton
+                label={strings.ai.translate}
+                icon={<Languages size={14} />}
+                active={Boolean(translatedTitle)}
+                busy={generateAi.isPending && generateAi.variables?.kind === 'title_translation'}
+                disabled={!aiReady || generateAi.isPending}
+                onClick={() => generateAi.mutate({ articleId: item.id, kind: 'title_translation' })}
+              />
+              <span className="mx-1 h-5 w-px bg-line" />
+            </>
+          ) : null}
+
           <IconButton
             label={item.is_read ? strings.article.markUnread : strings.article.markRead}
             active={item.is_read}
@@ -185,6 +230,13 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
       <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
         <article className="mx-auto max-w-[660px] px-6 py-8">
           <h1 className="text-3xl font-bold leading-snug text-ink">{item.title}</h1>
+
+          {translatedTitle ? (
+            <p className="mt-2 flex items-start gap-2 text-base font-semibold text-brand-ink">
+              <Languages size={15} className="mt-1 shrink-0" />
+              <span>{translatedTitle.content}</span>
+            </p>
+          ) : null}
 
           <div className="mt-4 flex flex-wrap items-center gap-2 border-b border-line pb-5 text-xs text-ink-2">
             <SourceLogo name={item.feed_title} iconUrl={item.feed_icon_url} size={20} />
@@ -221,6 +273,33 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
               referrerPolicy="no-referrer"
               className="mt-6 w-full rounded-lg"
             />
+          ) : null}
+
+          {summary && summaryOpen ? (
+            <section className="mt-6 rounded-xl border border-line bg-page px-4 py-3.5 print:hidden">
+              <header className="flex items-center gap-2">
+                <Sparkles size={14} className="text-brand-ink" />
+                <span className="text-sm font-semibold text-ink">{strings.ai.summaryTitle}</span>
+                <span className="truncate text-2xs text-ink-3">{summary.model}</span>
+                <button
+                  type="button"
+                  aria-label="收起 AI 总结"
+                  onClick={() => setSummaryOpen(false)}
+                  className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-subtle hover:text-ink"
+                >
+                  <ChevronUp size={15} />
+                </button>
+              </header>
+              <p className="mt-2 whitespace-pre-wrap text-[13.5px] leading-[1.8] text-ink">
+                {summary.content}
+              </p>
+            </section>
+          ) : null}
+
+          {isEssay && !summary && summaryOpen && generateAi.isError ? (
+            <p className="mt-6 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger-ink print:hidden">
+              {generateAi.error instanceof Error ? generateAi.error.message : strings.error}
+            </p>
           ) : null}
 
           <div className="article-body mt-6" dangerouslySetInnerHTML={{ __html: html }} />
@@ -265,5 +344,36 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** 顶栏的 AI 软按钮（设计稿：indigo-50 底 + indigo 文字，12/600）。 */
+function AiButton({
+  label,
+  icon,
+  active,
+  busy,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  icon: ReactNode;
+  active: boolean;
+  busy: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        active ? 'bg-soft text-on-soft' : 'text-ink-2 hover:bg-subtle hover:text-ink'
+      }`}
+    >
+      {busy ? <Loader2 size={14} className="animate-spin" /> : icon}
+      {label}
+    </button>
   );
 }

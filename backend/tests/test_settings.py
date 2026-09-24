@@ -15,6 +15,7 @@ def test_settings_defaults(auth_client: TestClient) -> None:
         "auto_refresh_enabled": True,
         "refresh_interval_minutes": 60,
         "text_style": "comfortable",
+        "ai_token_limit": 0,
     }
 
 

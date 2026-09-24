@@ -6,23 +6,7 @@
 本阶段 UI **不提供不可用的假入口**：设置弹窗内四个 tab 统一渲染「后续版本支持」占位。
 
 做完一个就把对应小节从本文档移到 `AGENTS.md` 的模块表，并同步 `docs/api.md`、`docs/data-model.md`。
-已完成并移出的：**F5 全文抽取 → M11**（见 `docs/architecture.md`）。
-
----
-
-## F1 AI 助手
-
-**能力**：文章摘要、标题翻译；多供应商（OpenAI 兼容 / Anthropic / 本地 Ollama）；token 用量统计与月度上限。
-
-**接口占位**：`GET/PUT /api/ai/config`、`POST /api/ai/summarize`、`POST /api/ai/translate`、`GET /api/ai/usage`
-
-**数据预留**：`ai_configs(user_id, provider, base_url, api_key, model, token_limit)`、`ai_usages(user_id, article_id, kind, tokens_in, tokens_out, created_at)`
-
-**依赖**：抓取管线（正文）、阅读器（渲染位）、设置（配置 tab）
-
-**触发条件**：需要摘要或翻译时。此时才在正文区顶部渲染 AI 区块（设计稿已给出位置与样式）。
-
-**已知设计点**：api_key 存本地明文还是加密，实现前需定；token 上限超限时的行为（拒绝 / 降级）需定。
+已完成并移出的：**F5 全文抽取 → M11**、**F1 AI 助手 → M12**（见 `docs/architecture.md`）。
 
 ---
 

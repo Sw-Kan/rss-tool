@@ -18,6 +18,7 @@ def _to_out(row: SettingsRow) -> SettingsOut:
         auto_refresh_enabled=row.auto_refresh_enabled,
         refresh_interval_minutes=row.refresh_interval_minutes,
         text_style=row.text_style,  # type: ignore[arg-type]
+        ai_token_limit=row.ai_token_limit,
     )
 
 
@@ -38,6 +39,8 @@ def patch_settings(
         row.refresh_interval_minutes = payload.refresh_interval_minutes
     if payload.text_style is not None:
         row.text_style = payload.text_style
+    if payload.ai_token_limit is not None:
+        row.ai_token_limit = payload.ai_token_limit
 
     db.commit()
     db.refresh(row)

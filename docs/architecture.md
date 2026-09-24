@@ -77,6 +77,30 @@ readability-lxml 抽正文容器                 选它而非 trafilatura：需�
 - **失败隔离**：单源失败写 `feeds.last_status/last_error`，不影响其它源；目录刷新用 `asyncio.gather` 限流 5。抽取失败只标 `extract_status`，不影响刷新返回值。
 - **共享**：`feeds`/`articles` 与用户无关，同一 URL 全库只抓一次，`subscriptions` 决定谁看得见。
 
+## AI 助手（F1）
+
+```
+前端：设置 → AI                          前端：阅读器顶栏「AI 总结」「标题翻译」
+  GET/POST/PATCH/DELETE /api/ai/providers     POST /api/ai/generate?kind=summary|title_translation
+  PATCH /api/settings {ai_token_limit}        GET  /api/ai/results?article_id=   (打开文章回填)
+  GET /api/ai/usage                           ▼
+                                       ai.run()
+                                         ├─ 命中 ai_results → 直接返回，不再调上游
+                                         ├─ 本月用量 >= 上限 → 429
+                                         ├─ pick_provider()  第一条 enabled（按 position）
+                                         └─ complete()       httpx POST 上游，写 ai_results
+```
+
+两套报文：`openai`（`{base_url}/chat/completions` + Bearer）与 `anthropic`（`{base_url}/messages` + `x-api-key`）。
+协议藏在 `ai_providers.protocol` 里由预设决定，UI 不暴露——需要别的协议就用「自定义」预设。
+
+关键性质：
+
+- `api_key` 明文落库（本地单实例、库未加密，再包一层是摆设），但**永不回传**，接口只给 `sk-••••••••cdef` 掩码；空 key 时干脆不发鉴权头（本地 Ollama 的用法）。
+- 上游失败**不写** `ai_results`，所以用户修好配置后可以直接重试；成功则永久缓存，重复点击不重复计费。
+- `ai_results` 同时是缓存与用量账本，`/api/ai/usage` 直接按月聚合这张表，不另开计数表。
+- AI 的 `base_url` 是用户自己填的配置，**不做内网拦截**；这与 feed 侧 URL 必须过 SSRF 校验是两回事。
+
 ## 阅读状态
 
 `user_item_state` 是 `(user_id, article_id)` 的稀疏表：没行 = 未读未收藏。列表查询 left join 后归一为 `is_read/is_favorite` 布尔值返回。
@@ -98,6 +122,6 @@ readability-lxml 抽正文容器                 选它而非 trafilatura：需�
 
 ## 模块索引
 
-MVP：M0 基础设施 · M1 认证 · M2 订阅管理 · M3 抓取管线 · M4 内容导航 · M5 阅读器 · M6 媒体布局 · M7 阅读状态 · M8 设置 · M9 个人资料 · M10 数据导出 · M11 全文抽取。
+已成模块：M0 基础设施 · M1 认证 · M2 订阅管理 · M3 抓取管线 · M4 内容导航 · M5 阅读器 · M6 媒体布局 · M7 阅读状态 · M8 设置 · M9 个人资料 · M10 数据导出 · M11 全文抽取 · M12 AI 助手。
 
-后续（不实现，见 `docs/roadmap.md`）：F1 AI · F2 集成 · F3 自动化 · F4 代理 · F6 媒体缓存 · F7 i18n。
+尚未实现（见 `docs/roadmap.md`）：F2 集成 · F3 自动化 · F4 代理 · F6 媒体缓存 · F7 i18n。

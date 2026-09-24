@@ -91,12 +91,35 @@ SQLite，`backend/data/rss.db`。启动时 `create_all`，**无迁移**：表结
 | auto_refresh_enabled | `true` | |
 | refresh_interval_minutes | `60` | 允许 5–1440 |
 | text_style | `comfortable` | `small` \| `comfortable` \| `large` |
+| ai_token_limit | `0` | 每月 AI token 上限，0 = 不限 |
 
-## 后续模块的表设计（**本阶段不建**）
+## ai_providers — M12
+
+| 字段 | 说明 |
+|---|---|
+| id, user_id, label, position | |
+| protocol | `openai` \| `anthropic`，由预设决定，UI 不暴露 |
+| base_url, model | |
+| api_key | 明文；**永不回传**，接口只给掩码。空值 = 不发鉴权头（本地 Ollama） |
+| enabled | 多个开启时按 `position` 取第一个 |
+
+## ai_results — M12
+
+| 字段 | 说明 |
+|---|---|
+| id, user_id, article_id | unique(user_id, article_id, kind) |
+| kind | `summary` \| `title_translation` |
+| model, content | |
+| tokens_in, tokens_out | 上游未返回 usage 时为 0 |
+| created_at | 用量按月聚合的依据 |
+
+索引：`(user_id, created_at)`。这张表既是结果缓存（命中即不再调上游），也是用量账本。
+
+## 后续模块的表设计（**本阶段尚未实现**）
 
 记录下来只为划定边界。项目无迁移机制，提前建表没有价值；真正实现时再加。
 
-- F1 AI：`ai_configs(user_id, provider, base_url, api_key, model, token_limit)`、`ai_usages(user_id, article_id, kind, tokens_in, tokens_out, created_at)`
+- F1 AI：已实现，见上方 `ai_providers` / `ai_results`。
 - F2 集成：`integrations(user_id, kind, config_json, enabled)`，kind ∈ `rsshub`/`obsidian`/`feishu`/`custom`
 - F3 自动化：`automation_rules(user_id, enabled, trigger, conditions_json, actions_json, position)`
 - F4 代理：`proxy_configs(user_id, mode, http_url, https_url, no_proxy)`

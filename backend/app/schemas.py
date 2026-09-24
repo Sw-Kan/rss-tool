@@ -209,6 +209,7 @@ class SettingsOut(BaseModel):
     auto_refresh_enabled: bool
     refresh_interval_minutes: int
     text_style: TextStyle
+    ai_token_limit: int
 
 
 class SettingsPatch(BaseModel):
@@ -216,6 +217,76 @@ class SettingsPatch(BaseModel):
     auto_refresh_enabled: bool | None = None
     refresh_interval_minutes: int | None = Field(default=None, ge=5, le=1440)
     text_style: TextStyle | None = None
+    # F1：每月 AI token 上限，0 = 不限
+    ai_token_limit: int | None = Field(default=None, ge=0, le=1_000_000_000)
+
+
+# ---------- AI（F1） ----------
+
+AiProtocol = Literal["openai", "anthropic"]
+AiKind = Literal["summary", "title_translation"]
+
+
+class AiProviderOut(BaseModel):
+    """api_key 永不回传，只给掩码提示。"""
+
+    id: str
+    label: str
+    protocol: AiProtocol
+    base_url: str
+    model: str
+    enabled: bool
+    position: int
+    has_key: bool
+    api_key_hint: str
+
+
+class AiConfigOut(BaseModel):
+    providers: list[AiProviderOut]
+    token_limit: int
+
+
+class AiProviderCreate(BaseModel):
+    preset: str = "custom"
+
+
+class AiProviderPatch(BaseModel):
+    label: str | None = Field(default=None, max_length=60)
+    base_url: str | None = Field(default=None, max_length=500)
+    model: str | None = Field(default=None, max_length=120)
+    enabled: bool | None = None
+    # 空字符串表示“不改”，clear_key=true 才显式清空
+    api_key: str | None = Field(default=None, max_length=500)
+    clear_key: bool = False
+
+
+class AiUsageOut(BaseModel):
+    month_tokens: int
+    total_tokens: int
+    limit: int
+    calls: int
+    by_kind: dict[str, int]
+
+
+class AiArticleIn(BaseModel):
+    article_id: str
+
+
+class AiResultOut(BaseModel):
+    kind: AiKind
+    content: str
+    model: str
+    cached: bool
+    tokens_in: int
+    tokens_out: int
+    created_at: datetime
+
+
+class AiResultsOut(BaseModel):
+    """打开文章时一次性回填两种结果，避免两次请求。"""
+
+    summary: AiResultOut | None = None
+    title_translation: AiResultOut | None = None
 
 
 class HealthOut(BaseModel):

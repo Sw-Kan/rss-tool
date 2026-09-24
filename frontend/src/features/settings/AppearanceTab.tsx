@@ -1,6 +1,7 @@
 import { Moon, Sun } from 'lucide-react';
 
 import { useSettings, useUpdateSettings } from '../../api/hooks';
+import { Switch } from '../../components/Field';
 import { strings } from '../../lib/strings';
 import type { TextStyle, Theme } from '../../types';
 
@@ -101,21 +102,11 @@ export function AppearanceTab() {
             <h3 className="text-sm font-semibold text-ink">{strings.settings.refresh}</h3>
             <p className="mt-0.5 text-xs text-ink-3">{strings.settings.refreshHint}</p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={auto_refresh_enabled}
-            onClick={() => update.mutate({ auto_refresh_enabled: !auto_refresh_enabled })}
-            className={`relative h-5 w-10 shrink-0 rounded-full transition-colors ${
-              auto_refresh_enabled ? 'bg-brand' : 'bg-line-strong'
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-[left] ${
-                auto_refresh_enabled ? 'left-[22px]' : 'left-0.5'
-              }`}
-            />
-          </button>
+          <Switch
+            checked={auto_refresh_enabled}
+            label={strings.settings.refresh}
+            onChange={(next) => update.mutate({ auto_refresh_enabled: next })}
+          />
         </div>
 
         <label className="mt-4 flex items-center gap-3">

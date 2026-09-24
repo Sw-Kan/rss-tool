@@ -42,6 +42,7 @@ def export_user(db: Session, user: User) -> dict[str, Any]:
                 "auto_refresh_enabled": settings_row.auto_refresh_enabled,
                 "refresh_interval_minutes": settings_row.refresh_interval_minutes,
                 "text_style": settings_row.text_style,
+                "ai_token_limit": settings_row.ai_token_limit,
             }
             if settings_row
             else None

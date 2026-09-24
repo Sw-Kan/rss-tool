@@ -37,7 +37,7 @@ export function Modal({
 
   const panelSlot = (
     <div className="flex min-w-0 flex-1 flex-col">
-      <header className="flex items-start justify-between gap-4 border-b border-line px-6 pt-6 pb-4">
+      <header className="flex items-start justify-between gap-4 border-b border-line px-8 pt-6 pb-4">
         <div className="min-w-0">
           <Dialog.Title className="text-xl font-bold text-ink">{title}</Dialog.Title>
           {subtitle ? (
@@ -54,10 +54,10 @@ export function Modal({
         </Dialog.Close>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-8 py-5">{children}</div>
 
       {footer ? (
-        <footer className="flex justify-end gap-3 border-t border-line px-6 py-4">{footer}</footer>
+        <footer className="flex justify-end gap-3 border-t border-line px-8 py-4">{footer}</footer>
       ) : null}
     </div>
   );

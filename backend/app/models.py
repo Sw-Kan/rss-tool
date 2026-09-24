@@ -188,3 +188,47 @@ class UserSettings(Base):
     auto_refresh_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     refresh_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     text_style: Mapped[str] = mapped_column(String(20), default="comfortable")
+    # F1：每月 token 上限，0 表示不限
+    ai_token_limit: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class AiProvider(Base):
+    """F1：AI 供应商配置。可多条，按 position 取第一条启用的使用。
+
+    `protocol` 由预设决定，不在 UI 里暴露（OpenAI 兼容 / Anthropic 两套报文）。
+    """
+
+    __tablename__ = "ai_providers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str] = mapped_column(String(60), default="自定义")
+    protocol: Mapped[str] = mapped_column(String(20), default="openai")
+    base_url: Mapped[str] = mapped_column(String(500), default="")
+    api_key: Mapped[str] = mapped_column(String(500), default="")
+    model: Mapped[str] = mapped_column(String(120), default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTimeUTC, default=utcnow)
+
+
+class AiResult(Base):
+    """F1：AI 结果缓存兼用量账本。同一 (用户, 文章, 类型) 只调一次上游。"""
+
+    __tablename__ = "ai_results"
+    __table_args__ = (
+        UniqueConstraint("user_id", "article_id", "kind", name="uq_ai_user_article_kind"),
+        Index("ix_ai_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[str] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(30))
+    model: Mapped[str] = mapped_column(String(120), default="")
+    content: Mapped[str] = mapped_column(Text, default="")
+    tokens_in: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTimeUTC, default=utcnow)

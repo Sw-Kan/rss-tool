@@ -109,6 +109,8 @@ export interface AppSettings {
   auto_refresh_enabled: boolean;
   refresh_interval_minutes: number;
   text_style: TextStyle;
+  /** 每月 AI token 上限，0 = 不限 */
+  ai_token_limit: number;
 }
 
 export interface UserExport {
@@ -149,4 +151,58 @@ export interface ReaderSearch {
   feed: string | null;
   state: ReadState;
   item: string | null;
+}
+
+/* ---------- F1 AI ---------- */
+
+export type AiProtocol = 'openai' | 'anthropic';
+export type AiKind = 'summary' | 'title_translation';
+
+export interface AiProvider {
+  id: string;
+  label: string;
+  /** 报文协议，由预设决定，UI 不暴露 */
+  protocol: AiProtocol;
+  base_url: string;
+  model: string;
+  enabled: boolean;
+  position: number;
+  has_key: boolean;
+  /** 掩码提示，例如 sk-••••••••4f2a；明文永不回传 */
+  api_key_hint: string;
+}
+
+export interface AiConfig {
+  providers: AiProvider[];
+  token_limit: number;
+}
+
+export interface AiPreset {
+  key: string;
+  label: string;
+  base_url: string;
+  model: string;
+}
+
+export interface AiUsage {
+  month_tokens: number;
+  total_tokens: number;
+  limit: number;
+  calls: number;
+  by_kind: Record<string, number>;
+}
+
+export interface AiResult {
+  kind: AiKind;
+  content: string;
+  model: string;
+  cached: boolean;
+  tokens_in: number;
+  tokens_out: number;
+  created_at: string;
+}
+
+export interface AiResults {
+  summary: AiResult | null;
+  title_translation: AiResult | null;
 }

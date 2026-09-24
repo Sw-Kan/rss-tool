@@ -54,6 +54,7 @@ docs/                 架构、数据模型、API、设计系统、开发流程�
 | `folders`、`subscriptions` | 订阅管理模块 |
 | `user_settings` | 设置模块 |
 | `users.avatar_*` | 个人资料模块 |
+| `ai_providers`、`ai_results` | AI 助手 |
 
 **不变式（不可违反）**
 
@@ -63,7 +64,8 @@ docs/                 架构、数据模型、API、设计系统、开发流程�
 4. `feeds` / `articles` 全局共享（同一 URL 只抓一次）；用户数据经 `subscriptions` + `user_item_state` 关联。
 5. 收藏是**虚拟目录**，不落 `folders` 表。
 6. 正文 HTML 必须先经 `sanitizeHtml()` 清洗再渲染。
-7. 抓取用户提供的 URL 前必须过 SSRF 校验（含每次重定向后复检）；仅 `ALLOW_PRIVATE_FETCH=true` 时放行内网地址（自建 RSSHub / 局域网源用）。
+7. `ai_providers.api_key` 明文落库但**永不回传**给前端（只给掩码提示）；日志里也不打印。
+8. 抓取**来自 feed 内容**的 URL（订阅源、原文链接）前必须过 SSRF 校验（含每次重定向后复检）；仅 `ALLOW_PRIVATE_FETCH=true` 时放行内网地址。AI 的 `base_url` 是用户自己在设置里填的，不做内网拦截（否则本地 Ollama / 局域网网关会被误伤）。
 
 ## 5. 代码风格
 
@@ -134,13 +136,13 @@ make lint && make typecheck && make test
 
 ## 11. 尚未实现（禁止自行扩 scope）
 
-- AI 总结 / 标题翻译（渲染入口也不要留假的）
 - RSSHub / Obsidian / 飞书 / custom export 集成
 - 自动化规则、代理配置、图片本地缓存、中英双语
 - Alembic 迁移（表结构变更直接删 `backend/data/rss.db` 重建）
 - 列表虚拟滚动、自动标记已读、多设备同步、Playwright 端到端测试
 
 以上都在 `docs/roadmap.md` 里有边界与触发条件。要做，先改 `docs/roadmap.md`、把对应模块从「后续」移到「当前」，并同步本节。
+已完成并移出的：**F5 全文抽取 → M11**（`services/extract.py`）、**F1 AI 助手 → M12**（`services/ai.py`）。
 
 ## 12. 已知限制（不要当 bug 修）
 
@@ -149,4 +151,6 @@ make lint && make typecheck && make test
 - 抽取失败（含超时）会写 `extracted_at` 且不再重试，避免每轮刷新反复撞同一个坏页面；要强制重试只能删库重建。
 - 侧边栏顶部的搜索图标只做**本地过滤**（对已加载的目录名与源名做子串匹配），不发请求、不搜文章正文。
 - 外链图片可能因防盗链加载失败，以占位图兜底。
+- AI：`api_key` 明文存 SQLite（本地单实例、库本身未加密，额外加密只是摆设）；不做流式输出；上游失败不写 `ai_results`，也不自动重试（用户点一次就调一次）；上游未返回 usage 时 token 记 0。
+- AI：多个供应商同时开启时只用列表里第一个（按 `position`）。
 - 单实例、无迁移、无密码找回、无登录限流。

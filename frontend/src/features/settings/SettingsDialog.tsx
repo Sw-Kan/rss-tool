@@ -3,6 +3,7 @@ import { Globe, Palette, Plug, Rss, Sparkles, Zap, type LucideIcon } from 'lucid
 
 import { Modal } from '../../components/Modal';
 import { strings } from '../../lib/strings';
+import { AiTab } from './AiTab';
 import { AppearanceTab } from './AppearanceTab';
 import { PlaceholderTab } from './PlaceholderTab';
 import { RssTab } from './RssTab';
@@ -33,7 +34,7 @@ const TITLES: Record<SettingsTab, { title: string; subtitle: string }> = {
     subtitle: strings.settings.appearanceSubtitle,
   },
   rss: { title: strings.settings.rssTitle, subtitle: strings.settings.rssSubtitle },
-  ai: { title: strings.settings.tabAi, subtitle: 'AI 总结与标题翻译' },
+  ai: { title: strings.settings.tabAi, subtitle: '供应商、模型与 token 用量' },
   integrations: { title: strings.settings.tabIntegrations, subtitle: 'RSSHub / Obsidian / 飞书' },
   automation: { title: strings.settings.tabAutomation, subtitle: '当 → 如果 → 则 规则' },
   proxy: { title: strings.settings.tabProxy, subtitle: 'HTTP / HTTPS / NO_PROXY' },
@@ -78,7 +79,7 @@ export function SettingsDialog({
             <p className="text-xl font-bold text-ink">{strings.settings.title}</p>
             <p className="mt-0.5 text-xs text-ink-3">{strings.settings.subtitle}</p>
           </div>
-          <Tabs.List className="flex flex-col gap-1 px-3">
+          <Tabs.List className="flex flex-col gap-1 px-4">
             {TAB_META.map(({ id, label, icon: Icon }) => (
               <Tabs.Trigger
                 key={id}
@@ -99,7 +100,10 @@ export function SettingsDialog({
       <Tabs.Content value="rss" className="outline-none">
         <RssTab />
       </Tabs.Content>
-      {(['ai', 'integrations', 'automation', 'proxy'] as const).map((id) => (
+      <Tabs.Content value="ai" className="outline-none">
+        <AiTab />
+      </Tabs.Content>
+      {(['integrations', 'automation', 'proxy'] as const).map((id) => (
         <Tabs.Content key={id} value={id} className="outline-none">
           <PlaceholderTab />
         </Tabs.Content>

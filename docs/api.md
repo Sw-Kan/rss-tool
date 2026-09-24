@@ -132,6 +132,32 @@ type SettingsOut = { theme: 'light'|'dark'; language: 'zh-CN';
 
 `refresh_interval_minutes` 允许 5–1440，越界 422。改动后调度器立即重排。
 
-## 后续模块预留（本阶段不挂载）
+## AI — M12
 
-`/api/ai/*`（F1）、`/api/integrations/*`（F2）、`/api/automation/*`（F3）、`/api/proxy/*`（F4）、`/api/media/*`（F6）。见 `docs/roadmap.md`。
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/ai/config` | `{providers: AiProviderOut[], token_limit}` |
+| GET | `/api/ai/presets` | 预设列表（OpenAI / Anthropic / DeepSeek / Moonshot / OpenRouter / Ollama / 自定义） |
+| POST | `/api/ai/providers` | `{preset}` → 201 |
+| PATCH | `/api/ai/providers/{id}` | `{label?, base_url?, model?, enabled?, api_key?, clear_key?}` |
+| DELETE | `/api/ai/providers/{id}` | 204 |
+| GET | `/api/ai/usage` | `{month_tokens, total_tokens, limit, calls, by_kind}` |
+| GET | `/api/ai/results?article_id=` | `{summary: AiResultOut\|null, title_translation: AiResultOut\|null}`，只读缓存 |
+| POST | `/api/ai/generate?kind=` | `kind=summary\|title_translation`，body `{article_id}` |
+
+```ts
+type AiProviderOut = { id, label, protocol: 'openai'|'anthropic', base_url, model,
+                       enabled, position, has_key: boolean, api_key_hint: string }
+type AiResultOut  = { kind, content, model, cached: boolean, tokens_in, tokens_out, created_at }
+```
+
+约定：
+
+- `api_key` **永不回传**，只给 `api_key_hint`（如 `sk-••••••••cdef`）。PATCH 时空字符串 = 不改，`clear_key: true` 才清空。
+- `generate` 命中缓存直接返回 `cached: true`，不再调上游。
+- 错误码：未配置/配置非法 → **400**；上游 HTTP 错误、超时、响应不可解析 → **502**；本月用量超 `token_limit` → **429**。
+- `token_limit` 通过 `PATCH /api/settings {ai_token_limit}` 修改，0 = 不限。
+
+## 后续模块预留（尚未挂载）
+
+`/api/integrations/*`（F2）、`/api/automation/*`（F3）、`/api/proxy/*`（F4）、`/api/media/*`（F6）。见 `docs/roadmap.md`。

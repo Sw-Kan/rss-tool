@@ -79,6 +79,53 @@ export function TextInput({ className = '', ...rest }: InputHTMLAttributes<HTMLI
   return <input {...rest} className={`${CONTROL_CLASS} h-10 ${className}`} />;
 }
 
+/** 40×20 开关（设计稿 ai-toggle / 自动刷新用）。 */
+export function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={`relative h-5 w-10 shrink-0 rounded-full transition-colors ${
+        checked ? 'bg-brand' : 'bg-line-strong'
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-[left] ${
+          checked ? 'left-[22px]' : 'left-0.5'
+        }`}
+      />
+    </button>
+  );
+}
+
+/** 紧凑字段：标签 10.5px + 32px 输入框（设计稿供应商卡片里的三列字段）。 */
+export function MiniField({
+  label,
+  className = '',
+  ...rest
+}: { label: string } & InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <label className="block min-w-0">
+      <span className="mb-1 block text-[10.5px] text-ink-3">{label}</span>
+      <input
+        {...rest}
+        className={`h-8 w-full rounded-lg border border-line bg-surface px-2.5 text-[11.5px] text-ink placeholder:text-ink-3 outline-none transition-colors focus:border-brand ${className}`}
+      />
+    </label>
+  );
+}
+
 export function Select({
   className = '',
   children,

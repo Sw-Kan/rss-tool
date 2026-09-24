@@ -36,6 +36,8 @@ make db-reset       # 删除 rss.db 与 uploads/，下次启动重建
 | 加自建 RSSHub / 局域网源 | 设 `ALLOW_PRIVATE_FETCH=true` 后重启后端；默认会被 SSRF 防护拒绝 |
 | 看全文抽取效果 | 库里查：`sqlite3 backend/data/rss.db "select extract_status,content_source,count(*) from articles group by 1,2"` |
 | 关掉全文抽取 | 设 `EXTRACT_ENABLED=false`（调试抓取管线时用） |
+| 不花钱验证 AI 链路 | 起个假上游（见下），供应商填 `http://127.0.0.1:8977/v1` |
+| 看 AI 用量 | `sqlite3 backend/data/rss.db "select kind,sum(tokens_in+tokens_out) from ai_results group by 1"` |
 
 ## 测试
 
@@ -68,6 +70,33 @@ make typecheck  # tsc --noEmit
 - [ ] 上传 >3MB 或改名的文本文件当头像 → 被拒；首字母头像 5 色可切换
 - [ ] 主题切深色后刷新保持；刷新间隔改为 5 分钟后调度器按新间隔触发
 - [ ] 导出我的数据（JSON）可被 `jq` 解析且含已读/收藏记录
+- [ ] 设置 → AI：添加供应商、填地址/Key/模型、关掉开关后「AI 总结」按钮变灰
+- [ ] 阅读一篇文章点「AI 总结」出结果；再点一次不再产生上游请求（库里 `ai_results` 只有一行）
+- [ ] 「标题翻译」显示在原文标题下方；刷新页面后两者都还在（走 `/api/ai/results` 回填）
+- [ ] 把 API Key 改错 → 提示上游 401；改回正确后可以直接重试成功（失败不写库）
+- [ ] 把上限设成比当前用量小的值 → 下一次生成提示已达上限，可命中缓存的仍能打开
+
+### 不花钱验证 AI 链路
+
+```bash
+python3 - <<'EOF' &
+import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class H(BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers["content-length"])) or b"{}")
+        out = {"choices": [{"message": {"content": "一句话总结。\n• 要点一"}}],
+               "usage": {"prompt_tokens": 100, "completion_tokens": 20}}
+        raw = json.dumps(out).encode()
+        self.send_response(200); self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(raw))); self.end_headers(); self.wfile.write(raw)
+    def log_message(self, *a): pass
+HTTPServer(("127.0.0.1", 8977), H).serve_forever()
+EOF
+```
+
+然后「设置 → AI → 添加供应商 → 自定义」，地址填 `http://127.0.0.1:8977/v1`，模型随便填，
+Key 留空即可（空 key 不发鉴权头）。
 
 ## 提交
 

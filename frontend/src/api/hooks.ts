@@ -13,6 +13,13 @@ import {
 
 import { apiParams } from '../lib/scope';
 import type {
+  AiConfig,
+  AiKind,
+  AiPreset,
+  AiProvider,
+  AiResult,
+  AiResults,
+  AiUsage,
   AppSettings,
   Feed,
   Folder,
@@ -342,4 +349,84 @@ export function useUnauthorizedRedirect(onUnauthorized: () => void) {
   return (error: unknown): void => {
     if (isUnauthorized(error)) onUnauthorized();
   };
+}
+
+/* ---------------- F1 AI ---------------- */
+
+export function useAiConfig() {
+  return useQuery({ queryKey: keys.aiConfig, queryFn: () => http.get<AiConfig>('/api/ai/config') });
+}
+
+/** 预设是静态表，不随用户变化。 */
+export function useAiPresets() {
+  return useQuery({
+    queryKey: keys.aiPresets,
+    queryFn: () => http.get<AiPreset[]>('/api/ai/presets'),
+    staleTime: Infinity,
+  });
+}
+
+export function useAiUsage() {
+  return useQuery({ queryKey: keys.aiUsage, queryFn: () => http.get<AiUsage>('/api/ai/usage') });
+}
+
+/** 已有结果（不触发上游），打开文章时回填。 */
+export function useAiResults(articleId: string | null) {
+  return useQuery({
+    queryKey: keys.aiResults(articleId ?? ''),
+    queryFn: () => http.get<AiResults>('/api/ai/results', { article_id: articleId }),
+    enabled: Boolean(articleId),
+  });
+}
+
+export function useCreateAiProvider() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (preset: string) => http.post<AiProvider>('/api/ai/providers', { preset }),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.aiConfig }),
+  });
+}
+
+export function useUpdateAiProvider() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...patch
+    }: {
+      id: string;
+      label?: string;
+      base_url?: string;
+      model?: string;
+      enabled?: boolean;
+      api_key?: string;
+      clear_key?: boolean;
+    }) => http.patch<AiProvider>(`/api/ai/providers/${id}`, patch),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.aiConfig }),
+  });
+}
+
+export function useDeleteAiProvider() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => http.del<void>(`/api/ai/providers/${id}`),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.aiConfig }),
+  });
+}
+
+/** 生成总结 / 标题翻译（命中缓存则直接返回）。 */
+export function useGenerateAi() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ articleId, kind }: { articleId: string; kind: AiKind }) =>
+      http.post<AiResult>(`/api/ai/generate?kind=${kind}`, { article_id: articleId }),
+    onSuccess: (result, variables) => {
+      client.setQueryData<AiResults>(keys.aiResults(variables.articleId), (previous) => ({
+        summary: previous?.summary ?? null,
+        title_translation: previous?.title_translation ?? null,
+        [result.kind]: result,
+      }));
+      void client.invalidateQueries({ queryKey: keys.aiUsage });
+    },
+  });
 }

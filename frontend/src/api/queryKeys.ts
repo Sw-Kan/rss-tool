@@ -16,6 +16,10 @@ export const keys = {
   itemDetails: ['items', 'detail'] as const,
   itemContext: (id: string, search: ReaderSearch) =>
     ['items', 'context', id, queryKeyFor(search)] as const,
+  aiConfig: ['ai', 'config'] as const,
+  aiPresets: ['ai', 'presets'] as const,
+  aiUsage: ['ai', 'usage'] as const,
+  aiResults: (articleId: string) => ['ai', 'results', articleId] as const,
 };
 
 /** 任何写操作完成后统一失效这些 key（AGENTS.md §跨模块契约）。 */

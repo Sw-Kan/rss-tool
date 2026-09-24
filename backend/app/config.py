@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     extract_timeout_seconds: float = 12.0
     extract_max_bytes: int = 3 * 1024 * 1024
 
+    # F1 AI 助手
+    ai_timeout_seconds: float = 60.0
+
     @property
     def data_path(self) -> Path:
         return (BACKEND_DIR / self.data_dir).resolve()

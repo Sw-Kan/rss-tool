@@ -67,6 +67,7 @@ export function SettingsDialog({
       title={title}
       subtitle={subtitle}
       width={960}
+      height={760}
       container={({ sidebar, panel }) => (
         <Tabs.Root
           value={activeTab}

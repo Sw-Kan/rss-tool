@@ -64,6 +64,7 @@ export function ProfileDialog({ open, onOpenChange, user }: ProfileDialogProps) 
       onOpenChange={onOpenChange}
       title={t.profile.title}
       width={480}
+      height={560}
       footer={
         <>
           <Button variant="outline" className="w-[198px]" onClick={() => onOpenChange(false)}>

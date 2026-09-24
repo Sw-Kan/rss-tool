@@ -13,6 +13,8 @@ interface ModalProps {
   footer?: ReactNode;
   /** 设计稿：设置 960×760，个人资料 480×560 */
   width?: number;
+  /** 固定高度。给定时弹窗不随内容变化，切 tab 外壳不动、只换内容区（设计稿如此） */
+  height?: number;
   /** 设置弹窗用左右两栏布局 */
   sidebar?: ReactNode;
   /**
@@ -30,6 +32,7 @@ export function Modal({
   children,
   footer,
   width = 480,
+  height,
   sidebar,
   container,
 }: ModalProps) {
@@ -71,8 +74,13 @@ export function Modal({
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40" style={{ background: 'var(--overlay)' }} />
         <Dialog.Content
-          style={{ width, maxWidth: 'calc(100vw - 32px)' }}
-          className="fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100vh-64px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-card)]"
+          style={{
+            width,
+            height,
+            maxWidth: 'calc(100vw - 32px)',
+            maxHeight: 'calc(100vh - 64px)',
+          }}
+          className="fixed top-1/2 left-1/2 z-50 flex -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-card)]"
         >
           {container ? (
             container({ sidebar: sidebarSlot, panel: panelSlot })

@@ -77,6 +77,7 @@ async def fetch(
     max_bytes: int | None = None,
     timeout: float | None = None,
     proxy_spec: proxy.ProxySpec | None = None,
+    referer: str | None = None,
 ) -> FetchResult:
     settings = get_settings()
     spec = proxy_spec if proxy_spec is not None else proxy.ProxySpec()
@@ -89,6 +90,8 @@ async def fetch(
         headers["If-None-Match"] = etag
     if modified:
         headers["If-Modified-Since"] = modified
+    if referer:
+        headers["Referer"] = referer
 
     limit = max_bytes if max_bytes is not None else settings.fetch_max_bytes
     request_timeout = timeout if timeout is not None else settings.fetch_timeout_seconds

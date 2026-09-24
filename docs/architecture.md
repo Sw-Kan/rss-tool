@@ -151,6 +151,29 @@ src/lib/i18n/index.tsx  LOCALES / detectLocale / bundles / I18nProvider / useT
 - **失败隔离**：集成没配好只记日志跳过，不影响刷新结果，也不影响同批其它规则。
 - **幂等**：自动化只对「本次新增」的文章生效，不会在全量重放时把旧文章再标一遍。
 
+## 媒体缓存（F6）
+
+```
+前端                                       后端
+resolveMediaUrl(src, article.url)          GET /api/media?url=<encoded>
+  → /api/media?url=<encoded>                 ├─ lookup()  命中 → 直接回文件
+                                             ├─ 冷启动 → fetch_and_store()
+                                             │    ├─ feed_fetch.fetch()（SSRF + 重定向复检 + 限长 + 代理）
+                                             │    ├─ sniff_content_type()  按魔数判类型
+                                             │    ├─ 白名单外 → 记 failed，302 回原地址
+                                             │    └─ 落盘 data/media/xx/yy/<sha256>
+                                             └─ 取不到 → 302 回原地址（浏览器自己去试）
+```
+
+- 缓存键是源 URL 的 sha256，同时是主键与磁盘路径，按两位分片。
+- 响应带 `private, max-age=31536000, immutable` + `X-Content-Type-Options: nosniff`。
+- **不缓存 SVG**（能带脚本，同源返回等于 XSS），只缓存栅格图白名单。
+- 失败也记一行：`MEDIA_RETRY_HOURS` 内不重试，避免反复打上游。
+- 取图带 `Referer: <图片自身 origin>` —— 大量 CDN 靠它防盗链，不带就是 403（这是这个功能能生效的前提）。
+- 超出 `MEDIA_CACHE_MAX_MB` 按 `last_used_at` 做 LRU 淘汰，但**保护刚写入的那条**；淘汰是惰性的，调小预算要到下次写入才收敛。
+- 代理配置变更时清掉失败记录：失败很可能就是代理造成的，留着会让用户觉得"改了没用"。
+- 前端覆盖点：`RemoteImage`、`SourceLogo`（源图标同样可能被防盗链）、正文 HTML（在清洗阶段改写）、阅读器的 picture 条目。
+
 ## 阅读状态
 
 `user_item_state` 是 `(user_id, article_id)` 的稀疏表：没行 = 未读未收藏。列表查询 left join 后归一为 `is_read/is_favorite` 布尔值返回。
@@ -172,6 +195,6 @@ src/lib/i18n/index.tsx  LOCALES / detectLocale / bundles / I18nProvider / useT
 
 ## 模块索引
 
-已成模块：M0 基础设施 · M1 认证 · M2 订阅管理 · M3 抓取管线 · M4 内容导航 · M5 阅读器 · M6 媒体布局 · M7 阅读状态 · M8 设置 · M9 个人资料 · M10 数据导出 · M11 全文抽取 · M12 AI 助手 · M13 国际化 · M14 集成 · M15 自动化 · M16 代理。
+已成模块：M0 基础设施 · M1 认证 · M2 订阅管理 · M3 抓取管线 · M4 内容导航 · M5 阅读器 · M6 媒体布局 · M7 阅读状态 · M8 设置 · M9 个人资料 · M10 数据导出 · M11 全文抽取 · M12 AI 助手 · M13 国际化 · M14 集成 · M15 自动化 · M16 代理 · M17 媒体缓存。
 
-尚未实现（见 `docs/roadmap.md`）：F6 媒体缓存。
+路线图原定的 F1–F7 已全部实现；`docs/roadmap.md` 只剩被推迟的工程事项。

@@ -293,3 +293,24 @@ class AutomationRule(Base):
     condition: Mapped[dict] = mapped_column(JSON, default=dict)
     action: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTimeUTC, default=utcnow)
+
+
+class MediaCache(Base):
+    """F6 图片缓存。hash 是源 URL 的 sha256，同时是主键与磁盘文件名。
+
+    失败也留一行（status='failed'）：否则一屏几十张坏图会在每次刷新页面时
+    把上游重打一遍。
+    """
+
+    __tablename__ = "media_cache"
+    __table_args__ = (Index("ix_media_lru", "status", "last_used_at"),)
+
+    hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    url: Mapped[str] = mapped_column(String(2000))
+    content_type: Mapped[str] = mapped_column(String(100), default="")
+    bytes: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(10), default="ok")
+    error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    hits: Mapped[int] = mapped_column(Integer, default=0)
+    fetched_at: Mapped[datetime] = mapped_column(DateTimeUTC, default=utcnow)
+    last_used_at: Mapped[datetime] = mapped_column(DateTimeUTC, default=utcnow)

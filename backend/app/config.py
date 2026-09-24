@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     # F1 AI 助手
     ai_timeout_seconds: float = 60.0
 
+    # F6 媒体缓存
+    media_cache_enabled: bool = True
+    # 磁盘预算（MB），超出按 LRU 淘汰
+    media_cache_max_mb: int = 512
+    media_fetch_timeout_seconds: float = 10.0
+    media_max_bytes: int = 10 * 1024 * 1024
+    # 取图失败后的重试窗口（小时），期间不再重试
+    media_retry_hours: int = 6
+
     @property
     def data_path(self) -> Path:
         return (BACKEND_DIR / self.data_dir).resolve()

@@ -207,6 +207,13 @@ type RuleOut = { id, name, enabled, position,
 | PATCH | `/api/proxy` | 同上字段可选；`mode=system` 会清空 `url` |
 | POST | `/api/proxy/test` | 真实发一次请求，`{ok, message, latency_ms}` |
 
-## 后续模块预留（尚未挂载）
+## 媒体缓存 — M17
 
-`/api/media/*`（F6）。见 `docs/roadmap.md`。
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/media?url=<urlencoded>` | 命中缓存直接回文件；冷启动取一次并落盘；取不到 302 回原地址 |
+
+- 需要登录（`<img>` 同源请求会带 cookie）。
+- 响应头：`Cache-Control: private, max-age=31536000, immutable`、`X-Content-Type-Options: nosniff`。
+- 只缓存栅格图（jpeg/png/gif/webp/avif/bmp），按魔数判定，**SVG 一律不缓存**。
+- 路径没用路线图写的 `/api/media/{hash}`：浏览器端没法同步算 sha256，而缓存键本来就由服务端从 url 推导，放进路径没有额外价值。

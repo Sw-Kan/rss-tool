@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { swatchFor } from '../lib/format';
 import { useT } from '../lib/i18n';
+import { mediaUrl } from '../lib/media';
 
 interface RemoteImageProps {
   src: string;
@@ -50,7 +51,7 @@ export function RemoteImage({
 
   return (
     <img
-      src={src}
+      src={mediaUrl(src)}
       alt={alt}
       loading="lazy"
       decoding="async"

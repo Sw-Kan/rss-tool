@@ -23,6 +23,7 @@ from ..models import (
     UserItemState,
     UserSettings,
 )
+from ..services import media
 
 router = APIRouter(prefix="/api/data", tags=["data"])
 
@@ -42,6 +43,7 @@ def clear_local_data(user: CurrentUser, db: DbSession) -> None:
     ):
         db.execute(delete(model))
     db.commit()
+    media.clear(db)
     _clear_uploads()
 
 

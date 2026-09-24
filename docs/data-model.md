@@ -148,7 +148,19 @@ SQLite，`backend/data/rss.db`。启动时 `create_all`，**无迁移**：表结
 
 设计稿每条规则只有一个「如果」和一个「则」，所以存单个对象而不是数组。
 
-## 后续模块的表设计（**尚未实现**）
+## media_cache — M17
+
+| 字段 | 说明 |
+|---|---|
+| hash | 源 URL 的 sha256，主键，同时是磁盘文件名 |
+| url, content_type, bytes | |
+| status | `ok` \| `failed`（失败也留行，避免反复重试） |
+| error | 失败原因，截断 300 字 |
+| hits, fetched_at, last_used_at | 命中计数与 LRU 依据（`last_used_at` 更新有 1 小时节流） |
+
+索引：`(status, last_used_at)` 供 LRU 淘汰使用。文件落 `data/media/<hash[:2]>/<hash[2:4]>/<hash>`。
+
+## 后续模块的表设计（**不再有**）
 
 记录下来只为划定边界。项目无迁移机制，提前建表没有价值；真正实现时再加。
 
@@ -157,5 +169,4 @@ SQLite，`backend/data/rss.db`。启动时 `create_all`，**无迁移**：表结
 - F3 自动化：已实现，见上方 `automation_rules`。
 - F4 代理：已实现，见上方 `proxy_config`（改成实例级单行）。
 - F5 全文抽取：已实现，见 `docs/architecture.md`。
-- F6 媒体缓存：`media_cache(hash, url, path, bytes, fetched_at)`
 - F7 i18n：已实现，无新表，见 `user_settings.language`。

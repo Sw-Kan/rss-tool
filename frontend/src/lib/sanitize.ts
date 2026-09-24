@@ -7,6 +7,8 @@
 
 import DOMPurify from 'dompurify';
 
+import { resolveMediaUrl } from './media';
+
 const ALLOWED_TAGS = [
   'p', 'br', 'hr', 'div', 'span',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -20,15 +22,19 @@ const ALLOWED_TAGS = [
   'article', 'section', 'main', 'time',
 ];
 
+// 故意不放 srcset / sizes：它们会绕过图片缓存直连原站，在防盗链的源上必坏
 const ALLOWED_ATTR = [
-  'href', 'src', 'srcset', 'sizes', 'alt', 'title', 'width', 'height',
+  'href', 'src', 'alt', 'title', 'width', 'height',
   'datetime', 'cite', 'colspan', 'rowspan', 'scope', 'controls', 'poster', 'type', 'media',
 ];
 
-export function sanitizeHtml(html: string): string {
+/** `baseUrl` 用来解析正文里的相对图片地址（通常是文章原文地址）。 */
+export function sanitizeHtml(html: string, baseUrl?: string | null): string {
   if (!html) return '';
 
-  const clean = DOMPurify.sanitize(html, {
+  // 先把相对的图片地址绝对化，再交给 DOMPurify —— 否则它那条严格的 URI 白名单
+  // 会直接把 `/img/a.png` 这种 src 丢掉，后面就没机会解析了。
+  const clean = DOMPurify.sanitize(absolutizeImages(html, baseUrl), {
     ALLOWED_TAGS,
     ALLOWED_ATTR,
     FORBID_TAGS: ['script', 'iframe', 'style', 'form', 'input', 'button', 'object', 'embed', 'link'],
@@ -37,11 +43,51 @@ export function sanitizeHtml(html: string): string {
     ALLOWED_URI_REGEXP: /^(?:https?|mailto|data:image\/)/i,
   });
 
-  return harden(clean);
+  return harden(clean, baseUrl);
+}
+
+/**
+ * 用惰性 `<template>` 解析（不会发起任何网络请求），把相对图片地址按 baseUrl 补全。
+ * 解析不出来的直接删掉节点：留着只会让浏览器按本站路径去取，必然 404。
+ */
+function absolutizeImages(html: string, baseUrl?: string | null): string {
+  if (typeof document === 'undefined') return html;
+  if (!html.includes('<img')) return html;
+
+  const template = document.createElement('template');
+  template.innerHTML = html;
+
+  for (const image of template.content.querySelectorAll('img')) {
+    const raw = image.getAttribute('src');
+    if (!raw) {
+      image.remove();
+      continue;
+    }
+    if (/^data:/i.test(raw)) continue;
+    if (/^https?:/i.test(raw)) continue;
+
+    const resolved = baseUrl ? safeResolve(raw, baseUrl) : null;
+    if (!resolved) {
+      image.remove();
+      continue;
+    }
+    image.setAttribute('src', resolved);
+  }
+  return template.innerHTML;
+}
+
+function safeResolve(src: string, baseUrl: string): string | null {
+  try {
+    const url = new URL(src, baseUrl);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 /** DOMPurify 之后再做属性加固，避免依赖字符串正则改写 HTML。 */
-function harden(html: string): string {
+function harden(html: string, baseUrl?: string | null): string {
   if (typeof document === 'undefined') return html;
 
   const template = document.createElement('template');
@@ -51,7 +97,15 @@ function harden(html: string): string {
     anchor.setAttribute('target', '_blank');
     anchor.setAttribute('rel', 'noopener noreferrer');
   }
+
   for (const image of template.content.querySelectorAll('img')) {
+    const resolved = resolveMediaUrl(image.getAttribute('src'), baseUrl);
+    if (!resolved) {
+      // 地址解析不出来（无基地址的相对路径、非 http 协议等）：宁可去掉也不要指向本页
+      image.remove();
+      continue;
+    }
+    image.setAttribute('src', resolved);
     image.setAttribute('loading', 'lazy');
     image.setAttribute('referrerpolicy', 'no-referrer');
   }

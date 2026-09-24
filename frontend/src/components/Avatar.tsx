@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { initialOf, swatchFor } from '../lib/format';
+import { mediaUrl } from '../lib/media';
 
 interface AvatarProps {
   name: string;
@@ -63,7 +64,7 @@ export function SourceLogo({ name, iconUrl, size = 20 }: SourceLogoProps) {
   if (iconUrl && !broken) {
     return (
       <img
-        src={iconUrl}
+        src={mediaUrl(iconUrl)}
         alt=""
         width={size}
         height={size}

@@ -30,6 +30,7 @@ import { SourceLogo } from '../../components/Avatar';
 import { IconButton } from '../../components/Button';
 import { EmptyState } from '../../components/Field';
 import { absoluteTime, readingMinutes } from '../../lib/format';
+import { mediaUrl } from '../../lib/media';
 import { sanitizeHtml } from '../../lib/sanitize';
 import { useI18n, useT } from '../../lib/i18n';
 import type { ReaderSearch } from '../../types';
@@ -65,8 +66,9 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
 
   const wordCount = detail.data?.word_count ?? 0;
   const html = useMemo(
-    () => sanitizeHtml(detail.data?.content_html ?? ''),
-    [detail.data?.content_html],
+    // 传原文地址：正文里的相对图片路径要按它解析，否则会被当成本站路径
+    () => sanitizeHtml(detail.data?.content_html ?? '', detail.data?.url),
+    [detail.data?.content_html, detail.data?.url],
   );
 
   // generateAi.reset 来自 mutation observer，跨渲染稳定，可以安全放进依赖
@@ -270,7 +272,7 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
 
           {item.kind === 'picture' && item.image_url ? (
             <img
-              src={item.image_url}
+              src={mediaUrl(item.image_url)}
               alt={item.title}
               referrerPolicy="no-referrer"
               className="mt-6 w-full rounded-lg"

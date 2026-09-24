@@ -61,6 +61,7 @@ docs/                 架构、数据模型、API、设计系统、开发流程�
 | `integrations` | 集成 |
 | `automation_rules` | 自动化 |
 | `proxy_config` | 代理（实例级单行，不按用户分） |
+| `media_cache` | 媒体缓存 |
 
 **不变式（不可违反）**
 
@@ -141,14 +142,22 @@ make lint && make typecheck && make test
 
 外加：涉及 UI 的改动按 `docs/development.md` 的手工验收清单勾选对应条目。
 
-## 11. 尚未实现（禁止自行扩 scope）
+## 11. 路线图状态
 
-- 图片本地缓存（F6）
-- Alembic 迁移（表结构变更直接删 `backend/data/rss.db` 重建）
-- 列表虚拟滚动、自动标记已读、多设备同步、Playwright 端到端测试
+`docs/roadmap.md` 里原定的 F1–F7 **已全部实现**，各自成了模块：
 
-以上都在 `docs/roadmap.md` 里有边界与触发条件。要做，先改 `docs/roadmap.md`、把对应模块从「后续」移到「当前」，并同步本节。
-已完成并移出的：**F5 全文抽取 → M11**、**F1 AI 助手 → M12**、**F7 中英双语 → M13**、**F2 集成 → M14**、**F3 自动化 → M15**、**F4 代理 → M16**。
+| 原编号 | 模块 | 落点 |
+|---|---|---|
+| F5 全文抽取 | M11 | `services/extract.py` |
+| F1 AI 助手 | M12 | `services/ai.py` |
+| F7 中英双语 | M13 | `frontend/src/lib/i18n/` |
+| F2 集成 | M14 | `services/integrations.py` |
+| F3 自动化 | M15 | `services/automation.py` |
+| F4 代理 | M16 | `services/proxy.py` |
+| F6 媒体缓存 | M17 | `services/media.py` |
+
+`docs/roadmap.md` 里只剩「其他被推迟的工程事项」（Alembic、虚拟滚动、自动已读、Playwright、第三种语言）。
+要新增功能，先在那份文档里写清边界、接口与触发条件再动手——不要因为"下个版本可能会用"就提前铺代码。
 
 ## 12. 已知限制（不要当 bug 修）
 
@@ -170,4 +179,10 @@ make lint && make typecheck && make test
 - RSSHub 路由参数是 `name / scope / value`：`scope` 是**路由前缀**，匹配上就把 `name=value` 拼成 query 参数；`ACCESS_KEY` 以 `?key=` 传递。设计稿里「作用范围」写的是服务名（如「知乎 / 微博」），实际语义按路由前缀实现。
 - 自定义导出推的是固定 JSON 结构（title/url/author/feed/channel/kind/published_at/summary），不做用户自定义 schema 模板。
 - Obsidian / 飞书 / 自定义接口目前只被自动化的动作消费，阅读器里没有单独的「发送到」按钮。
+- 媒体缓存只缓存**栅格图**白名单（jpeg/png/gif/webp/avif/bmp），**绝不缓存 SVG**——SVG 能带脚本，从本站源上返回等于开 XSS。类型按魔数判定，不信上游声明的 Content-Type。
+- 媒体缓存拉不到图时 302 回原地址（让浏览器自己试），并把失败记一行；`MEDIA_RETRY_HOURS`（默认 6）内不再重试，否则一屏几十张坏图会在每次刷新页面时把上游打一遍。
+- 取图会带 `Referer: <图片自身 origin>`：大量 CDN（含少数派的 cdnfile）靠它做防盗链，不带就是 403，这是 F6 生效的前提。
+- 缓存按总字节预算（`MEDIA_CACHE_MAX_MB`，默认 512）做 LRU 淘汰，且**保护刚写入的那一条**——预算比单张图还小时，刚取到的图也必须能正常返回，而不是紧接着 302。淘汰是惰性的（只在写入时触发），调小预算要到下次写入才收敛。
+- 失败行字节数为 0，不参与淘汰；**代理配置变更时会清掉失败记录**，否则用户改完代理还要白等一个重试窗口。
+- 正文里的 `<img>` 会先按文章原文地址绝对化，再改写为 `/api/media?url=...`；`srcset` 被移出白名单（会绕过缓存直连原站，在防盗链的源上必坏）。
 - 单实例、无迁移、无密码找回、无登录限流。

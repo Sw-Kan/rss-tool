@@ -2,6 +2,11 @@
 
 const BASE = import.meta.env.VITE_API_BASE ?? '';
 
+/** 给非 fetch 的场景（`<img src>` 等）拼上同一个 API 前缀。 */
+export function apiPath(path: string): string {
+  return `${BASE}${path}`;
+}
+
 export class ApiError extends Error {
   readonly status: number;
 

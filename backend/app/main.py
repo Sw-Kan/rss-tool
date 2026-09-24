@@ -21,6 +21,7 @@ from .routers import (
     folders,
     integrations,
     items,
+    media,
     opml,
     proxy,
     users,
@@ -29,9 +30,6 @@ from .routers import settings as settings_router
 from .schemas import HealthOut
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-
-# 后续模块预留（尚未挂载，见 docs/roadmap.md）：
-#   /api/media
 
 
 @asynccontextmanager
@@ -64,6 +62,7 @@ app.include_router(ai.router)
 app.include_router(integrations.router)
 app.include_router(automation.router)
 app.include_router(proxy.router)
+app.include_router(media.router)
 
 
 @app.get("/api/health", response_model=HealthOut, tags=["health"])

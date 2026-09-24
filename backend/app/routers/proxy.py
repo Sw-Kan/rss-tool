@@ -11,7 +11,7 @@ from sqlalchemy import select
 from ..deps import CurrentUser, DbSession
 from ..models import ProxyConfig
 from ..schemas import IntegrationTestOut, ProxyOut, ProxyPatch
-from ..services import proxy
+from ..services import media, proxy
 
 router = APIRouter(prefix="/api/proxy", tags=["proxy"])
 
@@ -43,6 +43,8 @@ def read_proxy(user: CurrentUser, db: DbSession) -> ProxyOut:
 def update_proxy(payload: ProxyPatch, user: CurrentUser, db: DbSession) -> ProxyOut:
     _ = user
     row = _row(db)
+    before = (row.mode, row.url)
+
     if payload.mode is not None:
         row.mode = payload.mode
     if payload.url is not None:
@@ -51,8 +53,14 @@ def update_proxy(payload: ProxyPatch, user: CurrentUser, db: DbSession) -> Proxy
         row.no_proxy = payload.no_proxy.strip()
     if row.mode == "system":
         row.url = ""
+
     db.commit()
     db.refresh(row)
+
+    # 代理变了，之前的抓取失败很可能已经不复存在；不清掉的话会白等一个重试窗口
+    if (row.mode, row.url) != before:
+        media.clear_failures(db)
+
     return _out(row)
 
 

@@ -56,6 +56,8 @@ make db-reset       # 删除 rss.db 与 uploads/，下次启动重建
 | 本机 RSSHub | `docker start rsshub`；容器内用 `http://rsshub:1200`，宿主用 `http://127.0.0.1:1200`，两者都需要 `ALLOW_PRIVATE_FETCH=true` |
 | 看自动化是否触发 | 后端日志 `automation: 规则「…」跳过/动作失败`；库里 `user_item_state` 看收藏与已读 |
 | 看代理是否生效 | 设置 → 代理 → 测试连接；返回里会写明「经由 …」或「跟随系统」 |
+| 看图片缓存 | `du -sh backend/data/media`；库里 `select status,count(*),sum(bytes) from media_cache group by 1` |
+| 关掉图片缓存 | 设 `MEDIA_CACHE_ENABLED=false`（图片交回浏览器直连） |
 | 不花钱验证 AI 链路 | 起个假上游（见下），供应商填 `http://127.0.0.1:8977/v1` |
 | 看 AI 用量 | `sqlite3 backend/data/rss.db "select kind,sum(tokens_in+tokens_out) from ai_results group by 1"` |
 
@@ -104,6 +106,10 @@ make typecheck  # tsc --noEmit
 - [ ] 设置 → 代理：切到「本地 HTTP 代理」填一个不存在的地址 → 测试连接报失败；切回「默认」→ 恢复
 - [ ] 设置 → 自动化：新建规则、改条件与动作、关掉开关 → 刷新后只有开启的规则生效
 - [ ] 切换设置弹窗的六个 tab，窗口尺寸始终 960×760（外壳不动，只有内容区滚动）
+- [ ] 图片页与视频页的封面经 `/api/media` 加载；`backend/data/media/` 出现文件，刷新页面不再重复请求上游
+- [ ] 找一张防盗链的图（直连 403），经缓存后能正常显示
+- [ ] 正文里的相对路径图片（`<img src="/img/x.png">`）能正确显示（按原文地址解析）
+- [ ] 把 `MEDIA_CACHE_MAX_MB` 调到 1，加载几十张图后旧文件被淘汰、目录不超预算
 
 ### 不花钱验证 AI 链路
 

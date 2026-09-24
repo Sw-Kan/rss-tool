@@ -42,6 +42,9 @@ frontend/src/styles/  设计令牌
 docs/                 架构、数据模型、API、设计系统、开发流程、路线图
 ```
 
+`backend/` 与 `frontend/` 各有一份 `.dockerignore`：前端那份必须排除 `node_modules/`，
+否则 Dockerfile 里的 `COPY . .` 会把宿主机的二进制盖进镜像。改 Dockerfile 时别把它删了。
+
 ## 4. 模块边界与写权限（强约束）
 
 模块划分按**功能域横切**，详见 `docs/architecture.md`。**只有拥有者可以写对应数据**，禁止越权：

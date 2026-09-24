@@ -18,7 +18,7 @@ make dev     # 前端 http://localhost:5173，后端 http://localhost:8000
 Docker：
 
 ```bash
-make up      # http://localhost:5173
+make up      # http://localhost:8080
 ```
 
 ## 文档

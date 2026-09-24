@@ -15,6 +15,23 @@ make dev            # 后端 :8000 + 前端 :5173
 
 打开 http://localhost:5173 。首次可用登录页的「跳过，以 user 身份进入」直接进入。
 
+## Docker
+
+```bash
+make up        # 构建并启动，浏览器打开 http://localhost:8080
+make down      # 停止（保留数据卷）
+docker compose down -v   # 连数据卷一起删，等于恢复出厂
+docker compose logs -f backend
+```
+
+- 前端由 nginx 提供静态文件，并把 `/api` 反代到后端的 8000（cookie 必须同源，所以不能只发布后端端口）。
+- 后端只在内网监听，宿主只暴露 **8080**；要改端口用 `WEB_PORT=9000 make up`。
+- 数据放 named volume `rss-tool_rss-data`（`/data`：`rss.db`、`secret.key`、`uploads/`）。`secret.key` 一起持久化，所以**容器重启后登录状态不丢**。
+- 容器内默认 `ALLOW_PRIVATE_FETCH=false`。要塞进自建 RSSHub 或局域网源，用
+  `ALLOW_PRIVATE_FETCH=true make up`（compose 里已透传这个变量）。
+- 两个构建上下文各自带 `.dockerignore`：尤其前端必须排除 `node_modules`，否则
+  `COPY . .` 会把宿主机的二进制覆盖进镜像。
+
 ## 数据库
 
 `backend/data/rss.db`（自动创建）。**无迁移**：改表结构就删库重建：

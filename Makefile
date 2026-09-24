@@ -25,7 +25,7 @@ dev:
 	@echo "后端 http://localhost:8000 ｜ 前端 http://localhost:5173"
 	@trap "kill 0" INT TERM EXIT; \\
 	 (cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000) & \\
-	 (cd frontend &&  dev) & \\
+	 (cd frontend && $(PNPM) dev) & \\
 	 wait
 
 dev-backend:

@@ -97,15 +97,6 @@ export function activeNav(search: ReaderSearch): NavKey {
   return 'all';
 }
 
-/** 页面标题（设计稿顶部左侧的大字）。 */
-export function viewTitle(search: ReaderSearch, folderName: string | null): string {
-  if (search.folder) return folderName ?? '目录';
-  if (search.fav) return '收藏';
-  return { all: '全部', essays: '文章', pictures: '图片', videos: '视频', favorites: '收藏' }[
-    activeNav(search)
-  ];
-}
-
 export function isSameSearch(a: ReaderSearch, b: ReaderSearch): boolean {
   return toSearchParams(a).toString() === toSearchParams(b).toString();
 }

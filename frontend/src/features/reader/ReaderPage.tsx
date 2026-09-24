@@ -5,10 +5,10 @@ import { flattenItems, useFeeds, useFolders, useItems, useSidebarSummary } from 
 import { Resizer } from '../../components/Resizer';
 import { useReaderSearch } from '../../hooks/useReaderSearch';
 import { Button } from '../../components/Button';
-import { applyItem, applyState, viewTitle } from '../../lib/scope';
+import { activeNav, applyItem, applyState } from '../../lib/scope';
 import { LIST_KEY, LIST_SPLIT, loadWidth } from '../../lib/split';
 import { useT, type Strings } from '../../lib/i18n';
-import type { SidebarSummary } from '../../types';
+import type { NavKey, SidebarSummary } from '../../types';
 import { AddSourceDialog } from './AddSourceDialog';
 import { ArticlePane } from './ArticlePane';
 import { ItemList } from './ItemList';
@@ -55,7 +55,18 @@ export function ReaderPage() {
     ? feeds.data?.items.find((feed) => feed.id === search.feed)?.title
     : null;
 
-  const title = feedTitle ?? viewTitle(search, folderName);
+  // 标题文案走 i18n（viewTitle 那种硬编码中文的会漏翻）
+  const navTitles: Record<NavKey, string> = {
+    all: t.nav.all,
+    essays: t.nav.essays,
+    pictures: t.nav.pictures,
+    videos: t.nav.videos,
+    favorites: t.nav.favoritesItem,
+  };
+  const title =
+    feedTitle ??
+    (search.folder ? (folderName ?? t.list.folderFallback) : undefined) ??
+    (search.fav ? t.nav.favoritesItem : navTitles[activeNav(search)]);
   const subtitle = buildSubtitle(t, mode, search.fav, summary.data);
 
   if (itemsQuery.isPending) {

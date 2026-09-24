@@ -14,7 +14,6 @@ import {
   parseSearch,
   queryKeyFor,
   toSearchParams,
-  viewTitle,
 } from './scope';
 
 describe('parseSearch / toSearchParams', () => {
@@ -186,23 +185,6 @@ describe('apiParams', () => {
   it('omits state=all', () => {
     expect(apiParams({ ...defaultSearch(), state: 'all' })).toEqual({});
     expect(apiParams({ ...defaultSearch(), state: 'read' })).toEqual({ state: 'read' });
-  });
-});
-
-describe('viewTitle', () => {
-  it('prefers the folder name', () => {
-    const search = { ...defaultSearch(), folder: 'tech' };
-    expect(viewTitle(search, '技术')).toBe('技术');
-    expect(viewTitle(search, null)).toBe('目录');
-  });
-
-  it('falls back to the nav label', () => {
-    expect(viewTitle(applyNav('pictures', defaultSearch()), null)).toBe('图片');
-  });
-
-  it('says 收藏 for favorites, whatever the kind', () => {
-    const search = applyNav('favorites', applyNav('pictures', defaultSearch()));
-    expect(viewTitle(search, null)).toBe('收藏');
   });
 });
 

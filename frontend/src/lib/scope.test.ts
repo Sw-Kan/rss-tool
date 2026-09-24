@@ -55,7 +55,7 @@ describe('applyNav', () => {
     expect(applyNav('favorites', defaultSearch()).fav).toBe(true);
   });
 
-  it('keeps the selected folder but drops feed and article', () => {
+  it('keeps the selected folder and the favorite flag', () => {
     const current: ReaderSearch = {
       ...defaultSearch(),
       folder: 'tech',
@@ -69,9 +69,24 @@ describe('applyNav', () => {
     expect(next.kind).toBe('picture');
   });
 
-  it('clears fav when leaving the favorites entry', () => {
-    const favorites = applyNav('favorites', defaultSearch());
-    expect(applyNav('all', favorites).fav).toBe(false);
+  it('keeps fav across kind switches（收藏只受一级路由影响）', () => {
+    const favorites = applyNav('favorites', applyNav('pictures', defaultSearch()));
+    expect(apiParams(applyNav('essays', favorites))).toEqual({
+      kind: 'article',
+      favorite: 'true',
+    });
+  });
+
+  it('toggles fav off when the favorites entry is clicked again', () => {
+    const favorites = applyNav('favorites', applyNav('pictures', defaultSearch()));
+    expect(applyNav('favorites', favorites)).toMatchObject({ fav: false, kind: 'picture' });
+  });
+
+  it('entering favorites leaves the folder（收藏与目录同级）', () => {
+    const inFolder = applyFolder('tech', applyNav('pictures', defaultSearch()));
+    const favorites = applyNav('favorites', inFolder);
+    expect(favorites.folder).toBeNull();
+    expect(apiParams(favorites)).toEqual({ kind: 'picture', favorite: 'true' });
   });
 });
 
@@ -80,6 +95,18 @@ describe('applyFolder / applyFeed / applyState / applyItem', () => {
     const base = applyNav('videos', defaultSearch());
     const scoped = applyFolder('tech', base);
     expect(apiParams(scoped)).toEqual({ kind: 'video', folder_id: 'tech' });
+  });
+
+  it('leaves the favorites view when a folder is picked（点收藏再点目录 = 目录本身）', () => {
+    const favorites = applyNav('favorites', applyNav('pictures', defaultSearch()));
+    const folder = applyFolder('tech', favorites);
+    expect(folder.fav).toBe(false);
+    expect(apiParams(folder)).toEqual({ kind: 'picture', folder_id: 'tech' });
+  });
+
+  it('leaves the favorites view when a feed is picked', () => {
+    const favorites = applyNav('favorites', defaultSearch());
+    expect(applyFeed('sspai', favorites).fav).toBe(false);
   });
 
   it('keeps kind when switching folders', () => {
@@ -99,15 +126,15 @@ describe('applyFolder / applyFeed / applyState / applyItem', () => {
 });
 
 describe('activeNav', () => {
-  it('reflects kind and favorites', () => {
+  it('reflects the kind row', () => {
     expect(activeNav(defaultSearch())).toBe('all');
     expect(activeNav(applyNav('videos', defaultSearch()))).toBe('videos');
-    expect(activeNav(applyNav('favorites', defaultSearch()))).toBe('favorites');
   });
 
-  it('prefers favorites over kind (收藏的视频 高亮收藏)', () => {
+  it('keeps the kind row highlighted while favorites is on（两行同时高亮）', () => {
     const search = applyNav('favorites', applyNav('videos', defaultSearch()));
-    expect(activeNav(search)).toBe('favorites');
+    expect(activeNav(search)).toBe('videos');
+    expect(search.fav).toBe(true);
   });
 });
 
@@ -138,6 +165,11 @@ describe('viewTitle', () => {
 
   it('falls back to the nav label', () => {
     expect(viewTitle(applyNav('pictures', defaultSearch()), null)).toBe('图片');
+  });
+
+  it('says 收藏 for favorites, whatever the kind', () => {
+    const search = applyNav('favorites', applyNav('pictures', defaultSearch()));
+    expect(viewTitle(search, null)).toBe('收藏');
   });
 });
 

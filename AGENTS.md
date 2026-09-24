@@ -69,7 +69,7 @@ docs/                 架构、数据模型、API、设计系统、开发流程�
 2. 刷新订阅**绝不用 feed 的短摘要覆盖已抽取的全文**：`content_source == 'extracted'` 时，抓取管线不写 `content_html` / `word_count`。
 3. 抽取失败必须保留 feed 自带内容，绝不写入空正文或半成品。
 4. `feeds` / `articles` 全局共享（同一 URL 只抓一次）；用户数据经 `subscriptions` + `user_item_state` 关联。
-5. 收藏是**虚拟目录**，不落 `folders` 表。
+5. 收藏是**虚拟目录**，不落 `folders` 表；路由上它与目录**同级互斥**（`fav` 与 `folder` 不能同时有值），一级类型横向叠加。
 6. 正文 HTML 必须先经 `sanitizeHtml()` 清洗再渲染。
 7. `ai_providers.api_key` 明文落库但**永不回传**给前端（只给掩码提示）；日志里也不打印。
 8. 自动化**不得直接写 `user_item_state`**，改状态一律经 `services/item_state.py`（M7 的写入口）。

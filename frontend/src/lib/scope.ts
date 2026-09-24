@@ -1,7 +1,10 @@
 /** 阅读器视图状态 ↔ URL 查询串 ↔ 后端查询参数。
  *
- *  各维度是 AND 关系（docs/architecture.md 的前端路由契约）：
- *    kind（一级类型） ⊕ folder（二级目录） ⊕ feed（三级单源） ⊕ fav ⊕ state
+ *  一级类型横向叠加；二级是「目录」或「收藏」，两者同级、互斥：
+ *    kind ⊕ ( folder ⊕ feed | fav ) ⊕ state
+ *
+ *  所以收藏看的是「当前类型下收藏的内容」，不会被目录或单源再筛一遍
+ *  （docs/architecture.md 的前端路由契约）。
  */
 
 import type { ItemKind, NavKey, ReaderSearch, ReadState } from '../types';
@@ -55,25 +58,23 @@ export function toSearchParams(search: ReaderSearch): URLSearchParams {
   return params;
 }
 
-/** 点击侧边栏一级入口：只换类型/收藏，保留已选目录；丢弃源与当前文章。 */
+/** 点击一级类型入口（全部/文章/图片/视频）：只换类型，二级选择原样保留。 */
 export function applyNav(nav: NavKey, current: ReaderSearch): ReaderSearch {
-  return {
-    ...current,
-    kind: NAV_KINDS[nav],
-    fav: nav === 'favorites',
-    feed: null,
-    item: null,
-  };
+  if (nav === 'favorites') {
+    // 收藏与目录同级：进入收藏就离开目录；再点一次取消，回到当前类型的普通视图
+    return { ...current, fav: !current.fav, folder: null, feed: null, item: null };
+  }
+  return { ...current, kind: NAV_KINDS[nav], feed: null, item: null };
 }
 
-/** 点击二级目录（或未分组）：保留类型与收藏，切换目录，丢弃源与文章。 */
+/** 点击二级目录（或未分组）：与收藏同级，进目录就离开收藏。 */
 export function applyFolder(folderId: string | null, current: ReaderSearch): ReaderSearch {
-  return { ...current, folder: folderId, feed: null, item: null };
+  return { ...current, folder: folderId, fav: false, feed: null, item: null };
 }
 
-/** 点击三级源：保留上级过滤，切换源，丢弃文章。 */
+/** 点击三级源：源在目录里，同样离开收藏。 */
 export function applyFeed(feedId: string | null, current: ReaderSearch): ReaderSearch {
-  return { ...current, feed: feedId, item: null };
+  return { ...current, feed: feedId, fav: false, item: null };
 }
 
 export function applyState(state: ReadState, current: ReaderSearch): ReaderSearch {
@@ -84,9 +85,8 @@ export function applyItem(itemId: string | null, current: ReaderSearch): ReaderS
   return { ...current, item: itemId };
 }
 
-/** 反推侧边栏当前高亮项。 */
+/** 反推一级类型入口的高亮项。收藏是二级，单独由 search.fav 决定，可以同时高亮。 */
 export function activeNav(search: ReaderSearch): NavKey {
-  if (search.fav) return 'favorites';
   if (search.kind === 'article') return 'essays';
   if (search.kind === 'picture') return 'pictures';
   if (search.kind === 'video') return 'videos';
@@ -96,6 +96,7 @@ export function activeNav(search: ReaderSearch): NavKey {
 /** 页面标题（设计稿顶部左侧的大字）。 */
 export function viewTitle(search: ReaderSearch, folderName: string | null): string {
   if (search.folder) return folderName ?? '目录';
+  if (search.fav) return '收藏';
   return { all: '全部', essays: '文章', pictures: '图片', videos: '视频', favorites: '收藏' }[
     activeNav(search)
   ];

@@ -206,8 +206,14 @@ resolveMediaUrl(src, article.url)          GET /api/media?url=<encoded>
 /reader?kind=<article|picture|video>&fav=1&folder=<id|ungrouped>&feed=<id>&state=<unread|read>&item=<articleId>&settings=<tab>
 ```
 
-- 各维度 **AND 组合**，空值省略；`folder=ungrouped` 映射为后端的 `folder_id=none`。
-- 一级入口是快捷预设：`all`(无 kind) / `essays`(kind=article) / `pictures`(kind=picture) / `videos`(kind=video) / `favorites`(fav=1)。切换一级入口会保留已选目录、清除已选源与当前文章。
+- 维度组合关系是 `kind ⊕ ( folder ⊕ feed | fav ) ⊕ state`：一级类型横向叠加，
+  **收藏与目录同级互斥**（点收藏就离开目录，点目录/源就离开收藏）。
+  于是「收藏」看到的是当前类型下收藏的内容，不会被目录或单源再筛一遍。
+- 一级入口是快捷预设：`all`(无 kind) / `essays`(kind=article) / `pictures`(kind=picture) /
+  `videos`(kind=video)。切类型只换 `kind`，二级选择（目录或收藏）原样保留。
+- `favorites` 不是一级入口：它切的是二级的 `fav`，点一次进入、再点一次取消，
+  进入时清掉 `folder`。高亮上「收藏」与当前类型行会**同时亮着**，因为两者是叠加的。
+- `folder=ungrouped` 映射为后端的 `folder_id=none`。
 - 形态选择：`kind` 为 picture → 瀑布流，video → 网格，其余（含 all / favorites / 混合目录）→ 左列表右正文。
 - 设置弹窗用 `settings=<tab>` 深链，不单独建路由。
 

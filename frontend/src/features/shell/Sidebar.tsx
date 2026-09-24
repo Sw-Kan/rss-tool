@@ -170,7 +170,7 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
           type="button"
           onClick={() => update(applyNav('favorites', search))}
           className={`flex h-[34px] w-full items-center gap-3 rounded-lg px-4 text-sm transition-colors ${
-            current === 'favorites' ? 'bg-soft text-on-soft' : 'text-ink hover:bg-subtle'
+            search.fav ? 'bg-soft text-on-soft' : 'text-ink hover:bg-subtle'
           }`}
         >
           <Bookmark size={15} />

@@ -53,10 +53,33 @@ function json(body: unknown): Response {
 
 let calls: { url: string; method: string }[] = [];
 
-function stubFetch(enabledProviders: unknown[]) {
+/** 可控的 SSE 通道：测试里手动 push 帧来模拟流式（真实上游是分块给的）。 */
+function sseChannel() {
+  const encoder = new TextEncoder();
+  let push: (text: string) => void = () => {};
+  let close: () => void = () => {};
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      push = (text) => controller.enqueue(encoder.encode(text));
+      close = () => controller.close();
+    },
+  });
+  return {
+    open: () =>
+      Promise.resolve(
+        new Response(body, { headers: { 'content-type': 'text/event-stream' } }),
+      ),
+    frame: (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+    send: (text: string) => push(text),
+    close: () => close(),
+  };
+}
+
+function stubFetch(enabledProviders: unknown[], stream?: () => Promise<Response>) {
   calls = [];
   return (url: string, init?: RequestInit) => {
     calls.push({ url, method: (init?.method ?? 'GET').toUpperCase() });
+    if (url.includes('/api/ai/generate/stream') && stream) return stream();
     if (url.includes('/api/ai/config'))
       return Promise.resolve(json({ providers: enabledProviders, token_limit: 0 }));
     if (url.includes('/api/ai/results'))
@@ -104,7 +127,7 @@ function renderPane() {
 
 const summarizeButton = () => screen.getByRole('button', { name: zhCN.ai.summarize });
 const query = () => screen.getByTestId('query').textContent;
-const generated = () => calls.filter((call) => call.url.includes('/api/ai/generate'));
+const streamed = () => calls.filter((call) => call.url.includes('/api/ai/generate/stream'));
 
 beforeEach(() => {
   vi.stubGlobal('fetch', stubFetch([]));
@@ -127,18 +150,83 @@ describe('ArticlePane 的 AI 按钮', () => {
 
     fireEvent.click(button);
     expect(query()).toBe('?item=a1&settings=ai');
-    expect(generated()).toHaveLength(0);
+    expect(streamed()).toHaveLength(0);
   });
 
-  it('有启用的供应商时：无说明、点击生成总结', async () => {
-    vi.stubGlobal('fetch', stubFetch([PROVIDER]));
+  it('有启用的供应商时：点击走 SSE 端点，结果落到正文上方', async () => {
+    const channel = sseChannel();
+    vi.stubGlobal('fetch', stubFetch([PROVIDER], channel.open));
     renderPane();
-    await waitFor(() => expect(summarizeButton()).toBeTruthy());
     await waitFor(() => expect(summarizeButton().getAttribute('title')).toBeNull());
 
     fireEvent.click(summarizeButton());
-    await waitFor(() => expect(generated()).toHaveLength(1));
-    expect(generated()[0]?.url).toContain('kind=summary');
+    await waitFor(() => expect(streamed()).toHaveLength(1));
+    expect(streamed()[0]?.url).toContain('/api/ai/generate/stream?kind=summary');
+    expect(streamed()[0]?.method).toBe('POST');
     expect(query()).toBe('?item=a1');
+
+    channel.send(
+      channel.frame('done', {
+        kind: 'summary',
+        content: '一句话总结。',
+        model: 'gpt-4o-mini',
+        cached: false,
+        tokens_in: 3,
+        tokens_out: 4,
+        created_at: '2026-01-01T00:00:00+00:00',
+      }),
+    );
+    channel.close();
+    await waitFor(() => expect(screen.getByText('一句话总结。')).toBeTruthy());
+  });
+
+  it('流式：先出现部分文本，done 之后再补齐最终结果', async () => {
+    const channel = sseChannel();
+    vi.stubGlobal('fetch', stubFetch([PROVIDER], channel.open));
+    renderPane();
+    await waitFor(() => expect(summarizeButton().getAttribute('title')).toBeNull());
+
+    fireEvent.click(summarizeButton());
+    await waitFor(() => expect(streamed()).toHaveLength(1));
+
+    channel.send(
+      channel.frame('meta', { provider: 'OpenAI', model: 'gpt-4o-mini', attempt: 1 }),
+    );
+    channel.send(channel.frame('delta', { text: '前半' }));
+    await waitFor(() => expect(screen.getByText('前半')).toBeTruthy());
+
+    channel.send(channel.frame('delta', { text: '后半' }));
+    channel.send(
+      channel.frame('done', {
+        kind: 'summary',
+        content: '前半后半',
+        model: 'gpt-4o-mini',
+        cached: false,
+        tokens_in: 3,
+        tokens_out: 4,
+        created_at: '2026-01-01T00:00:00+00:00',
+      }),
+    );
+    channel.close();
+    await waitFor(() => expect(screen.getByText('前半后半')).toBeTruthy());
+  });
+
+  it('流式：error 帧撤掉半成品，并把原因显示出来', async () => {
+    const channel = sseChannel();
+    vi.stubGlobal('fetch', stubFetch([PROVIDER], channel.open));
+    renderPane();
+    await waitFor(() => expect(summarizeButton().getAttribute('title')).toBeNull());
+
+    fireEvent.click(summarizeButton());
+    await waitFor(() => expect(streamed()).toHaveLength(1));
+
+    channel.send(channel.frame('delta', { text: '写到一半' }));
+    await waitFor(() => expect(screen.getByText('写到一半')).toBeTruthy());
+
+    channel.send(channel.frame('error', { detail: 'AI 接口限流（429）：rate-limited' }));
+    channel.close();
+
+    await waitFor(() => expect(screen.getByText(/限流（429）/)).toBeTruthy());
+    expect(screen.queryByText('写到一半')).toBeNull();
   });
 });

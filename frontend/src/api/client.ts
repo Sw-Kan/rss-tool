@@ -1,5 +1,7 @@
 /** 唯一的后端调用出口。所有请求带 cookie，错误统一成 ApiError。 */
 
+import { createSseParser, type SseEvent } from '../lib/sse';
+
 const BASE = import.meta.env.VITE_API_BASE ?? '';
 
 /** 给非 fetch 的场景（`<img src>` 等）拼上同一个 API 前缀。 */
@@ -65,10 +67,38 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** POST 并逐帧消费 SSE。响应不是 2xx 时交给 parseError（预检失败仍是普通 JSON 错误）。 */
+async function streamRequest(
+  path: string,
+  body: unknown,
+  onEvent: (event: SseEvent) => void,
+): Promise<void> {
+  const response = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw await parseError(response);
+  if (!response.body) throw new ApiError(response.status, '流式响应没有内容');
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const parser = createSseParser();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    for (const event of parser.push(decoder.decode(value, { stream: true }))) onEvent(event);
+  }
+}
+
 export const http = {
   get: <T>(path: string, query?: Query) => request<T>(withQuery(path, query)),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) }),
+  /** SSE：逐帧回调，响应结束才 resolve；响应非 2xx 时和普通请求一样抛 ApiError。 */
+  stream: (path: string, body: unknown, onEvent: (event: SseEvent) => void): Promise<void> =>
+    streamRequest(path, body, onEvent),
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PUT', body: body === undefined ? undefined : JSON.stringify(body) }),
   patch: <T>(path: string, body: unknown) =>

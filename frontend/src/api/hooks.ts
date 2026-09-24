@@ -40,7 +40,7 @@ import type {
   SidebarSummary,
   User,
 } from '../types';
-import { http, isUnauthorized, download } from './client';
+import { ApiError, http, isUnauthorized, download } from './client';
 import { keys } from './queryKeys';
 
 const PAGE_SIZE = 30;
@@ -389,6 +389,8 @@ export function useAiResults(articleId: string | null) {
     queryKey: keys.aiResults(articleId ?? ''),
     queryFn: () => http.get<AiResults>('/api/ai/results', { article_id: articleId }),
     enabled: Boolean(articleId),
+    // 流式生成会往这份缓存里逐块写，别让 focus 触发的后台 refetch 用服务端旧结果盖掉
+    staleTime: Infinity,
   });
 }
 
@@ -427,21 +429,93 @@ export function useDeleteAiProvider() {
   });
 }
 
-/** 生成总结 / 标题翻译（命中缓存则直接返回）。 */
+/** 生成总结 / 标题翻译：SSE 流式，边收边写进 `aiResults` 缓存（命中缓存时只有一个 done）。
+ *
+ * 写在缓存里而不是组件 state，是因为阅读器本来就是从这份缓存读结果的 ——
+ * ArticlePane 不需要知道自己在看的是流式的一半还是最终结果。
+ */
 export function useGenerateAi() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ articleId, kind }: { articleId: string; kind: AiKind }) =>
-      http.post<AiResult>(`/api/ai/generate?kind=${kind}`, { article_id: articleId }),
-    onSuccess: (result, variables) => {
-      client.setQueryData<AiResults>(keys.aiResults(variables.articleId), (previous) => ({
-        summary: previous?.summary ?? null,
-        title_translation: previous?.title_translation ?? null,
-        [result.kind]: result,
-      }));
+    mutationFn: async ({
+      articleId,
+      kind,
+    }: {
+      articleId: string;
+      kind: AiKind;
+    }): Promise<AiResult> => {
+      const key = keys.aiResults(articleId);
+      const snapshot = client.getQueryData<AiResults>(key);
+      const startedAt = new Date().toISOString();
+      // 回调里赋值：用属性而不是 let，避免 TS 的收窄把 result 当成永远是 null
+      const state = { text: '', model: '', result: null as AiResult | null, failure: null as string | null };
+
+      const put = (value: AiResult) =>
+        client.setQueryData<AiResults>(key, (previous) => ({
+          summary: kind === 'summary' ? value : (previous?.summary ?? null),
+          title_translation:
+            kind === 'title_translation' ? value : (previous?.title_translation ?? null),
+        }));
+      const partial = (): AiResult => ({
+        kind,
+        content: state.text,
+        model: state.model,
+        cached: false,
+        tokens_in: 0,
+        tokens_out: 0,
+        created_at: startedAt,
+      });
+
+      try {
+        await http.stream(
+          `/api/ai/generate/stream?kind=${kind}`,
+          { article_id: articleId },
+          (event) => {
+            const payload = parseEventData(event.data);
+            if (event.event === 'meta') {
+              if (typeof payload?.model === 'string') state.model = payload.model;
+              put(partial());
+            } else if (event.event === 'delta') {
+              if (typeof payload?.text === 'string') state.text += payload.text;
+              put(partial());
+            } else if (event.event === 'done') {
+              state.result = payload as unknown as AiResult;
+            } else if (event.event === 'error') {
+              state.failure = typeof payload?.detail === 'string' ? payload.detail : 'AI 生成失败';
+            }
+          },
+        );
+      } catch (error) {
+        // 网络层失败：半成品不留在界面上
+        restore(client, key, snapshot);
+        throw error;
+      }
+
+      if (state.failure) {
+        // 上游失败不写库，界面也不该留半截总结
+        restore(client, key, snapshot);
+        throw new ApiError(502, state.failure);
+      }
+      if (!state.result) throw new ApiError(502, 'AI 接口没有返回结果');
+
+      put(state.result);
       void client.invalidateQueries({ queryKey: keys.aiUsage });
+      return state.result;
     },
   });
+}
+
+function restore(client: QueryClient, key: readonly unknown[], snapshot: AiResults | undefined): void {
+  client.setQueryData(key, snapshot ?? { summary: null, title_translation: null });
+}
+
+function parseEventData(data: string): Record<string, unknown> | null {
+  try {
+    const value: unknown = JSON.parse(data);
+    return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
 }
 
 /* ---------------- F2 集成 / F3 自动化 / F4 代理 ---------------- */

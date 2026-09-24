@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import Article
-from . import feed_fetch
+from . import feed_fetch, proxy
 from .classify import count_words, html_to_text
 from .feed_fetch import FetchError
 
@@ -109,7 +109,9 @@ def needs_extraction(article: Article, min_chars: int) -> bool:
     return len(html_to_text(article.content_html or article.summary_html)) < min_chars
 
 
-async def _extract_one(db: Session, article: Article, min_chars: int) -> str:
+async def _extract_one(
+    db: Session, article: Article, min_chars: int, spec: proxy.ProxySpec | None
+) -> str:
     """返回最终写入的 extract_status。"""
     settings = get_settings()
     try:
@@ -118,6 +120,7 @@ async def _extract_one(db: Session, article: Article, min_chars: int) -> str:
             accept=ACCEPT_HTML,
             max_bytes=settings.extract_max_bytes,
             timeout=settings.extract_timeout_seconds,
+            proxy_spec=spec,
         )
     except FetchError as exc:
         logger.info("extract: %s 抓取失败：%s", article.url, exc)
@@ -137,7 +140,13 @@ async def _extract_one(db: Session, article: Article, min_chars: int) -> str:
     return "ok"
 
 
-async def extract_pending(db: Session, feed_id: str, *, limit: int | None = None) -> int:
+async def extract_pending(
+    db: Session,
+    feed_id: str,
+    *,
+    limit: int | None = None,
+    spec: proxy.ProxySpec | None = None,
+) -> int:
     """为该源补齐正文过短的文章。返回成功抽取的篇数。
 
     绝不影响刷新结果：任何异常都只记录日志。
@@ -163,11 +172,12 @@ async def extract_pending(db: Session, feed_id: str, *, limit: int | None = None
 
     semaphore = asyncio.Semaphore(settings.extract_concurrency)
     now = datetime.now(UTC)
+    proxy_spec = spec if spec is not None else proxy.load_spec(db)
 
     async def one(article: Article) -> str:
         async with semaphore:
             try:
-                return await _extract_one(db, article, settings.extract_min_chars)
+                return await _extract_one(db, article, settings.extract_min_chars, proxy_spec)
             except Exception:  # 单篇失败不影响同批
                 logger.exception("extract: %s 抽取异常", article.url)
                 return "failed"

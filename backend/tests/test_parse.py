@@ -55,9 +55,10 @@ def test_upsert_is_idempotent_and_updates_content(db: Session) -> None:
     feed = make_feed(db, url="https://sspai.com/feed")
     parsed = feed_parse.parse(RSS_20, base_url=feed.url)
 
-    assert refresh.store_articles(db, feed, parsed) == 3
+    # store_articles 返回本次新增的文章 id（自动化只处理新增，需要对全量重放）
+    assert len(refresh.store_articles(db, feed, parsed)) == 3
     db.commit()
-    assert refresh.store_articles(db, feed, parsed) == 0
+    assert refresh.store_articles(db, feed, parsed) == []
     db.commit()
     assert db.query(Article).count() == 3
 

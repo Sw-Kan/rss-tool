@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import cast
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -22,7 +21,7 @@ from ..schemas import (
     ItemStateIn,
     SidebarSummaryOut,
 )
-from ..services import counts, items_query
+from ..services import counts, item_state, items_query
 from ..services.items_query import ItemFilter
 
 router = APIRouter(prefix="/api/items", tags=["items"])
@@ -139,58 +138,16 @@ def item_context(
 
 @router.patch("/{item_id}/state", response_model=ItemOut)
 def set_state(item_id: str, payload: ItemStateIn, user: CurrentUser, db: DbSession) -> ItemOut:
-    article, feed, custom_title, is_read, is_favorite = _fetch_visible(db, user.id, item_id)
-    row = _state_row(db, user.id, article.id)
-
-    if payload.is_read is not None:
-        row.is_read = payload.is_read
-        row.read_at = datetime.now(UTC) if payload.is_read else None
-        is_read = payload.is_read
-    if payload.is_favorite is not None:
-        row.is_favorite = payload.is_favorite
-        is_favorite = payload.is_favorite
-
-    db.commit()
-    return _to_out(article, feed, custom_title, bool(is_read), bool(is_favorite))
+    article, feed, custom_title, _is_read, _is_favorite = _fetch_visible(db, user.id, item_id)
+    row = item_state.set_state(
+        db, user.id, article.id, is_read=payload.is_read, is_favorite=payload.is_favorite
+    )
+    return _to_out(article, feed, custom_title, row.is_read, row.is_favorite)
 
 
 @router.post("/read", response_model=BulkReadOut)
 def bulk_read(payload: BulkReadIn, user: CurrentUser, db: DbSession) -> BulkReadOut:
-    visible = list(
-        db.scalars(
-            select(Article.id)
-            .join(Subscription, Subscription.feed_id == Article.feed_id)
-            .where(Subscription.user_id == user.id, Article.id.in_(payload.ids))
-        )
-    )
-    existing = {
-        row.article_id: row
-        for row in db.scalars(
-            select(UserItemState).where(
-                UserItemState.user_id == user.id, UserItemState.article_id.in_(visible)
-            )
-        )
-    }
-    now = datetime.now(UTC)
-    updated = 0
-    for article_id in visible:
-        row = existing.get(article_id)
-        if row is None:
-            db.add(
-                UserItemState(
-                    user_id=user.id,
-                    article_id=article_id,
-                    is_read=payload.is_read,
-                    read_at=now if payload.is_read else None,
-                )
-            )
-        else:
-            row.is_read = payload.is_read
-            row.read_at = now if payload.is_read else None
-        updated += 1
-
-    db.commit()
-    return BulkReadOut(updated=updated)
+    return BulkReadOut(updated=item_state.bulk_set_read(db, user.id, payload.ids, payload.is_read))
 
 
 # ---------- 内部工具 ----------
@@ -222,19 +179,6 @@ def _fetch_visible(
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="文章不存在")
     return row[0], row[1], row[2], bool(row[3]), bool(row[4])
-
-
-def _state_row(db: Session, user_id: str, article_id: str) -> UserItemState:
-    row = db.scalar(
-        select(UserItemState).where(
-            UserItemState.user_id == user_id, UserItemState.article_id == article_id
-        )
-    )
-    if row is None:
-        row = UserItemState(user_id=user_id, article_id=article_id)
-        db.add(row)
-        db.flush()
-    return row
 
 
 def _to_out(

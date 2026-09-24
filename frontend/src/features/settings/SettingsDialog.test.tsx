@@ -31,7 +31,13 @@ function stubFetch() {
               ? { month_tokens: 0, total_tokens: 0, limit: 0, calls: 0, by_kind: {} }
               : url.includes('/api/ai/presets')
                 ? []
-                : {};
+                : url.includes('/api/integrations')
+                  ? { items: [] }
+                  : url.includes('/api/proxy')
+                    ? { mode: 'system', url: '', no_proxy: '' }
+                    : url.includes('/api/automation/rules')
+                      ? []
+                      : {};
     return { ok: true, status: 200, statusText: 'OK', json: async () => body } as Response;
   });
 }

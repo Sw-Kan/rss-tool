@@ -16,7 +16,7 @@ from ..schemas import (
     RefreshBatchOut,
     RefreshResult,
 )
-from ..services import counts, refresh
+from ..services import counts, integrations, refresh
 from ..services.feed_fetch import FetchError
 
 router = APIRouter(prefix="/api/feeds", tags=["feeds"])
@@ -48,6 +48,12 @@ def list_feeds(
 @router.post("", response_model=FeedOut, status_code=status.HTTP_201_CREATED)
 async def create_feed(payload: FeedCreate, user: CurrentUser, db: DbSession) -> FeedOut:
     url = payload.url.strip()
+    # 裸路由（/sspai/matrix）按「设置 → 集成」里的 RSSHub 服务地址展开
+    if integrations.looks_like_route(url):
+        try:
+            url = integrations.expand_route(integrations.get_config(db, user.id, "rsshub"), url)
+        except integrations.IntegrationError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     existing = db.scalar(
         select(Subscription)
         .join(Feed, Feed.id == Subscription.feed_id)

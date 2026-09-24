@@ -206,3 +206,72 @@ export interface AiResults {
   summary: AiResult | null;
   title_translation: AiResult | null;
 }
+
+/* ---------- F2 / F3 / F4 ---------- */
+
+export type IntegrationKind = 'rsshub' | 'obsidian' | 'feishu' | 'custom_export';
+
+export interface RsshubParam {
+  name: string;
+  scope: string;
+  value: string;
+  secret: boolean;
+}
+
+export interface RsshubConfig {
+  base_url: string;
+  access_key: string;
+  env: string;
+  params: RsshubParam[];
+}
+
+export interface Integration {
+  kind: IntegrationKind;
+  enabled: boolean;
+  updated_at: string | null;
+  rsshub?: RsshubConfig;
+  obsidian?: { vault_path: string };
+  feishu?: { webhook_url: string };
+  custom_export?: { endpoint: string };
+}
+
+export interface IntegrationTest {
+  ok: boolean;
+  message: string;
+  latency_ms: number | null;
+}
+
+export type ProxyMode = 'system' | 'http' | 'https' | 'custom';
+
+export interface ProxyConfig {
+  mode: ProxyMode;
+  url: string;
+  no_proxy: string;
+}
+
+export type RuleTrigger = 'item_arrived' | 'video_arrived' | 'picture_arrived';
+export type RuleField = 'title' | 'word_count' | 'channel' | 'feed' | 'kind';
+export type RuleOp = 'contains' | 'gt' | 'lt' | 'eq';
+export type RuleActionType =
+  | 'favorite'
+  | 'mark_read'
+  | 'mark_unread'
+  | 'feishu'
+  | 'obsidian'
+  | 'custom_export';
+
+export interface RuleCondition {
+  field: RuleField;
+  op: RuleOp;
+  value: string;
+}
+
+export interface Rule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  position: number;
+  trigger: RuleTrigger;
+  condition: RuleCondition;
+  action: { type: RuleActionType };
+}

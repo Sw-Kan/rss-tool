@@ -115,6 +115,42 @@ src/lib/i18n/index.tsx  LOCALES / detectLocale / bundles / I18nProvider / useT
 - 没有引入 i18n 库：文案规模用不上 ICU 复数与命名空间加载，`Intl` 已经覆盖了唯一真正需要运行时能力的部分。
 - `I18nProvider` 的默认值是中文包，所以单测里不套 Provider 也能渲染。
 
+## 集成 / 自动化 / 代理（F2 / F3 / F4）
+
+```
+集成（integrations，按 kind 一行，config 是 JSON）
+  rsshub        base_url + access_key + env + params[{name,scope,value,secret}]
+  obsidian      vault_path
+  feishu        webhook_url
+  custom_export endpoint
+
+  顶点用法一：POST /api/feeds 收到裸路由（/sspai/matrix）→ expand_route() 拼成完整地址
+              并按 scope 前缀补 query 参数与 ?key=ACCESS_KEY
+  顶点用法二：被自动化的动作消费（推送飞书 / 写入 Obsidian / 推自定义接口）
+
+代理（proxy_config，实例级单行）
+  feed_fetch.fetch() 每跳都用 proxy.build_client(spec, url, addresses) 建客户端
+  → system: trust_env=True（环境变量里的代理不可用时降级直连并记警告）
+  → http / https: 只代理对应 scheme
+  → custom: 全部走该地址（socks5 需要 socksio）
+  → no_proxy 命中（域名 / 后缀 / CIDR）则直连
+
+自动化（automation_rules）
+  触发点：refresh_feed() 在 upsert + 全文抽取之后
+  1. run_for_new_articles(feed_id, 本次新增的 id)
+  2. 对每个订阅了该源的用户，按 position 顺序匹配规则（命中后继续匹配后续规则）
+  3. 动作：收藏 / 标记已读 / 标记未读 → 经 services/item_state.py（M7 写入口）
+           推送飞书 / 写入 Obsidian / 推自定义接口 → 经 integrations，受 MAX_PUSH_PER_RUN 限制
+
+  顺序很重要：抽取排在自动化之前，「字数 > N」这类条件才能看到抽取后的字数。
+```
+
+关键性质：
+
+- **写权限不越界**：自动化改阅读状态走 M7 的写入口，不自己动 `user_item_state`。
+- **失败隔离**：集成没配好只记日志跳过，不影响刷新结果，也不影响同批其它规则。
+- **幂等**：自动化只对「本次新增」的文章生效，不会在全量重放时把旧文章再标一遍。
+
 ## 阅读状态
 
 `user_item_state` 是 `(user_id, article_id)` 的稀疏表：没行 = 未读未收藏。列表查询 left join 后归一为 `is_read/is_favorite` 布尔值返回。
@@ -136,6 +172,6 @@ src/lib/i18n/index.tsx  LOCALES / detectLocale / bundles / I18nProvider / useT
 
 ## 模块索引
 
-已成模块：M0 基础设施 · M1 认证 · M2 订阅管理 · M3 抓取管线 · M4 内容导航 · M5 阅读器 · M6 媒体布局 · M7 阅读状态 · M8 设置 · M9 个人资料 · M10 数据导出 · M11 全文抽取 · M12 AI 助手 · M13 国际化。
+已成模块：M0 基础设施 · M1 认证 · M2 订阅管理 · M3 抓取管线 · M4 内容导航 · M5 阅读器 · M6 媒体布局 · M7 阅读状态 · M8 设置 · M9 个人资料 · M10 数据导出 · M11 全文抽取 · M12 AI 助手 · M13 国际化 · M14 集成 · M15 自动化 · M16 代理。
 
-尚未实现（见 `docs/roadmap.md`）：F2 集成 · F3 自动化 · F4 代理 · F6 媒体缓存。
+尚未实现（见 `docs/roadmap.md`）：F6 媒体缓存。

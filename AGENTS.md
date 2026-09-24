@@ -58,6 +58,9 @@ docs/                 架构、数据模型、API、设计系统、开发流程�
 | `user_settings` | 设置模块 |
 | `users.avatar_*` | 个人资料模块 |
 | `ai_providers`、`ai_results` | AI 助手 |
+| `integrations` | 集成 |
+| `automation_rules` | 自动化 |
+| `proxy_config` | 代理（实例级单行，不按用户分） |
 
 **不变式（不可违反）**
 
@@ -68,7 +71,8 @@ docs/                 架构、数据模型、API、设计系统、开发流程�
 5. 收藏是**虚拟目录**，不落 `folders` 表。
 6. 正文 HTML 必须先经 `sanitizeHtml()` 清洗再渲染。
 7. `ai_providers.api_key` 明文落库但**永不回传**给前端（只给掩码提示）；日志里也不打印。
-8. 抓取**来自 feed 内容**的 URL（订阅源、原文链接）前必须过 SSRF 校验（含每次重定向后复检）；仅 `ALLOW_PRIVATE_FETCH=true` 时放行内网地址。AI 的 `base_url` 是用户自己在设置里填的，不做内网拦截（否则本地 Ollama / 局域网网关会被误伤）。
+8. 自动化**不得直接写 `user_item_state`**，改状态一律经 `services/item_state.py`（M7 的写入口）。
+9. 抓取**来自 feed 内容**的 URL（订阅源、原文链接）前必须过 SSRF 校验（含每次重定向后复检）；仅 `ALLOW_PRIVATE_FETCH=true` 时放行内网地址。AI 的 `base_url` 是用户自己在设置里填的，不做内网拦截（否则本地 Ollama / 局域网网关会被误伤）。
 
 ## 5. 代码风格
 
@@ -139,13 +143,12 @@ make lint && make typecheck && make test
 
 ## 11. 尚未实现（禁止自行扩 scope）
 
-- RSSHub / Obsidian / 飞书 / custom export 集成
-- 自动化规则、代理配置、图片本地缓存
+- 图片本地缓存（F6）
 - Alembic 迁移（表结构变更直接删 `backend/data/rss.db` 重建）
 - 列表虚拟滚动、自动标记已读、多设备同步、Playwright 端到端测试
 
 以上都在 `docs/roadmap.md` 里有边界与触发条件。要做，先改 `docs/roadmap.md`、把对应模块从「后续」移到「当前」，并同步本节。
-已完成并移出的：**F5 全文抽取 → M11**（`services/extract.py`）、**F1 AI 助手 → M12**（`services/ai.py`）、**F7 中英双语 → M13**（`src/lib/i18n/`）。
+已完成并移出的：**F5 全文抽取 → M11**、**F1 AI 助手 → M12**、**F7 中英双语 → M13**、**F2 集成 → M14**、**F3 自动化 → M15**、**F4 代理 → M16**。
 
 ## 12. 已知限制（不要当 bug 修）
 
@@ -160,4 +163,11 @@ make lint && make typecheck && make test
 - 界面语言只有 `zh-CN` / `en` 两种；不引入 i18n 库（几百条文案用不上 ICU 复数规则），日期与数字走 `Intl`。
 - 语言来源：登录前用 localStorage / 浏览器语言，登录后以 `user_settings.language` 为准；切换语言时 `document.documentElement.lang` 同步更新。
 - AI 输出语言跟随界面语言（`services/ai.py` 的 `_PROMPTS`）；已缓存的总结不会因为切语言而重新生成，要换语言得清掉 `ai_results` 对应行。
+- 代理是**实例级**配置（`proxy_config` 单行）：feed/article 全库共享，同一 URL 只抓一次，"每用户不同代理"在模型上就不成立。
+- 代理的 `NO_PROXY` 支持精确域名、`.suffix` / `*.suffix`、CIDR；CIDR 靠抓取时解析到的 IP 判断。
+- 自动化只在**刷新**触发，且只处理本次新增的文章；「添加订阅」不触发（否则加一个源就会瞬间打出一堆推送）。
+- 推送类动作（飞书 / Obsidian / 自定义接口）每条规则每轮刷新上限 `MAX_PUSH_PER_RUN`（5 条）。集成未配置时记日志跳过，不算命中、不抛错。
+- RSSHub 路由参数是 `name / scope / value`：`scope` 是**路由前缀**，匹配上就把 `name=value` 拼成 query 参数；`ACCESS_KEY` 以 `?key=` 传递。设计稿里「作用范围」写的是服务名（如「知乎 / 微博」），实际语义按路由前缀实现。
+- 自定义导出推的是固定 JSON 结构（title/url/author/feed/channel/kind/published_at/summary），不做用户自定义 schema 模板。
+- Obsidian / 飞书 / 自定义接口目前只被自动化的动作消费，阅读器里没有单独的「发送到」按钮。
 - 单实例、无迁移、无密码找回、无登录限流。

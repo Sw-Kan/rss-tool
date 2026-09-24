@@ -11,7 +11,8 @@ dependencies = [
     "pydantic-settings>=2.3",
     "feedparser>=6.0",
     "readability-lxml>=0.8.1",
-    "httpx>=0.27",
+    # socksio 让 httpx 支持 socks5:// 代理（F4「自定义」模式）
+    "httpx[socks]>=0.27",
     "apscheduler>=3.10",
     "bcrypt>=4.1",
     "pyjwt>=2.8",

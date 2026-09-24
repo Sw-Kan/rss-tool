@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 ItemKind = Literal["article", "picture", "video"]
 AvatarType = Literal["letter", "image"]
@@ -295,3 +295,136 @@ class AiResultsOut(BaseModel):
 class HealthOut(BaseModel):
     status: str = "ok"
     scheduler_running: bool = False
+
+
+# ---------- 集成 / 代理 / 自动化（F2 / F3 / F4） ----------
+
+IntegrationKind = Literal["rsshub", "obsidian", "feishu", "custom_export"]
+ProxyMode = Literal["system", "http", "https", "custom"]
+RuleTrigger = Literal["item_arrived", "video_arrived", "picture_arrived"]
+RuleField = Literal["title", "word_count", "channel", "feed", "kind"]
+RuleOp = Literal["contains", "gt", "lt", "eq"]
+RuleActionType = Literal[
+    "favorite", "mark_read", "mark_unread", "feishu", "obsidian", "custom_export"
+]
+
+
+class RsshubParam(BaseModel):
+    """RSSHub 路由参数：按作用范围（路由前缀）把 query 参数拼到展开后的订阅地址上。"""
+
+    name: str = Field(min_length=1, max_length=60)
+    scope: str = Field(default="", max_length=200)
+    value: str = Field(default="", max_length=1000)
+    secret: bool = False
+
+
+class RsshubConfig(BaseModel):
+    base_url: str = Field(default="", max_length=500)
+    access_key: str = Field(default="", max_length=500)
+    env: str = Field(default="", max_length=2000)
+    params: list[RsshubParam] = Field(default_factory=list, max_length=50)
+
+
+class ObsidianConfig(BaseModel):
+    vault_path: str = Field(default="", max_length=1000)
+
+
+class FeishuConfig(BaseModel):
+    webhook_url: str = Field(default="", max_length=1000)
+
+
+class CustomExportConfig(BaseModel):
+    endpoint: str = Field(default="", max_length=1000)
+
+
+class IntegrationOut(BaseModel):
+    kind: IntegrationKind
+    enabled: bool
+    updated_at: datetime | None
+    # 按 kind 只填一个，避免前端做类型分支
+    rsshub: RsshubConfig | None = None
+    obsidian: ObsidianConfig | None = None
+    feishu: FeishuConfig | None = None
+    custom_export: CustomExportConfig | None = None
+
+
+class IntegrationListOut(BaseModel):
+    items: list[IntegrationOut]
+
+
+class IntegrationPatch(BaseModel):
+    enabled: bool | None = None
+    rsshub: RsshubConfig | None = None
+    obsidian: ObsidianConfig | None = None
+    feishu: FeishuConfig | None = None
+    custom_export: CustomExportConfig | None = None
+
+
+class IntegrationTestOut(BaseModel):
+    ok: bool
+    message: str
+    latency_ms: int | None = None
+
+
+class ProxyOut(BaseModel):
+    mode: ProxyMode
+    url: str
+    no_proxy: str
+
+
+class ProxyPatch(BaseModel):
+    mode: ProxyMode | None = None
+    url: str | None = Field(default=None, max_length=500)
+    no_proxy: str | None = Field(default=None, max_length=1000)
+
+
+# 每个字段允许的运算符：避免写出「标题 gt 1」这种永远不命中的规则
+FIELD_OPS: dict[str, tuple[str, ...]] = {
+    "title": ("contains", "eq"),
+    "channel": ("contains", "eq"),
+    "feed": ("contains", "eq"),
+    "word_count": ("gt", "lt", "eq"),
+    "kind": ("eq",),
+}
+
+
+class RuleCondition(BaseModel):
+    field: RuleField
+    op: RuleOp
+    value: str = Field(default="", max_length=200)
+
+    @model_validator(mode="after")
+    def _check_combo(self) -> RuleCondition:
+        allowed = FIELD_OPS[self.field]
+        if self.op not in allowed:
+            raise ValueError(f"{self.field} 只支持 {'/'.join(allowed)}")
+        return self
+
+
+class RuleAction(BaseModel):
+    type: RuleActionType
+
+
+class RuleOut(BaseModel):
+    id: str
+    name: str
+    enabled: bool
+    position: int
+    trigger: RuleTrigger
+    condition: RuleCondition
+    action: RuleAction
+
+
+class RuleCreate(BaseModel):
+    name: str = Field(default="新规则", max_length=80)
+    trigger: RuleTrigger = "item_arrived"
+    condition: RuleCondition = RuleCondition(field="title", op="contains", value="")
+    action: RuleAction = RuleAction(type="favorite")
+
+
+class RulePatch(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    enabled: bool | None = None
+    trigger: RuleTrigger | None = None
+    condition: RuleCondition | None = None
+    action: RuleAction | None = None

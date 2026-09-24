@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..models import Article, Feed, Folder, Subscription, User
 from ..schemas import RefreshResult
-from . import classify, extract, feed_fetch, feed_parse
+from . import automation, classify, extract, feed_fetch, feed_parse, proxy
 from .feed_fetch import FetchError
 
 # 同一源不并发抓取
@@ -43,9 +43,13 @@ class LoadedFeed:
 
 
 async def load_remote(
-    url: str, *, etag: str | None = None, modified: str | None = None
+    url: str,
+    *,
+    etag: str | None = None,
+    modified: str | None = None,
+    proxy_spec: proxy.ProxySpec | None = None,
 ) -> LoadedFeed:
-    result = await feed_fetch.fetch(url, etag=etag, modified=modified)
+    result = await feed_fetch.fetch(url, etag=etag, modified=modified, proxy_spec=proxy_spec)
     if result.not_modified:
         return LoadedFeed(
             parsed=feed_parse.ParsedFeed(None, None, None, None, []),
@@ -70,10 +74,13 @@ async def load_remote(
     )
 
 
-def store_articles(db: Session, feed: Feed, parsed: feed_parse.ParsedFeed) -> int:
-    """按 (feed_id, guid) upsert。只更新内容字段，不动订阅与用户状态。"""
+def store_articles(db: Session, feed: Feed, parsed: feed_parse.ParsedFeed) -> list[str]:
+    """按 (feed_id, guid) upsert。只更新内容字段，不动订阅与用户状态。
+
+    返回本次**新增**的文章 id —— 自动化只对新增文章生效，不能对全量重放。
+    """
     if not parsed.entries:
-        return 0
+        return []
     guids = [entry.guid for entry in parsed.entries]
     existing = {
         row.guid: row
@@ -81,14 +88,14 @@ def store_articles(db: Session, feed: Feed, parsed: feed_parse.ParsedFeed) -> in
             select(Article).where(Article.feed_id == feed.id, Article.guid.in_(guids))
         )
     }
-    created = 0
+    created: list[Article] = []
     for entry in parsed.entries:
         result = classify.classify(entry)
         article = existing.get(entry.guid)
         if article is None:
             article = Article(feed_id=feed.id, guid=entry.guid)
             db.add(article)
-            created += 1
+            created.append(article)
         article.url = entry.url
         article.title = entry.title
         article.author = entry.author
@@ -108,14 +115,23 @@ def store_articles(db: Session, feed: Feed, parsed: feed_parse.ParsedFeed) -> in
             article.word_count = result.word_count
             article.content_source = "feed"
         article.fetched_at = datetime.now(UTC)
-    return created
+
+    if created:
+        # 主键是 Python 侧默认值，flush 之后才有值；自动化要拿这些 id
+        db.flush()
+    return [article.id for article in created]
 
 
-async def refresh_feed(db: Session, feed: Feed) -> RefreshResult:
+async def refresh_feed(
+    db: Session, feed: Feed, *, spec: proxy.ProxySpec | None = None
+) -> RefreshResult:
     """抓取并入库单个源。失败写入 last_error，不抛给调用方。"""
+    proxy_spec = spec if spec is not None else proxy.load_spec(db)
     async with _lock_for(feed.url):
         try:
-            loaded = await load_remote(feed.url, etag=feed.etag, modified=feed.modified)
+            loaded = await load_remote(
+                feed.url, etag=feed.etag, modified=feed.modified, proxy_spec=proxy_spec
+            )
         except FetchError as exc:
             mark_fetched(feed, "error", str(exc))
             db.commit()
@@ -130,7 +146,7 @@ async def refresh_feed(db: Session, feed: Feed) -> RefreshResult:
             db.commit()
             # 304 也要补正文：文章可能是「添加订阅」时入库的（那条路径不抽取），
             # 若首次刷新恰好 304，不补就永远补不上。
-            await extract.extract_pending(db, feed.id)
+            await extract.extract_pending(db, feed.id, spec=proxy_spec)
             return RefreshResult(feed_id=feed.id, new_count=0, status="not_modified")
 
         if loaded.parsed.title and not feed.title:
@@ -146,21 +162,27 @@ async def refresh_feed(db: Session, feed: Feed) -> RefreshResult:
 
         # ponytail: 同步 DB 写入直接跑在事件循环里。单用户本地 SQLite，写入是毫秒级；
         # 若源数量增长到影响响应，再挪进 asyncio.to_thread（注意 session 不能跨线程共享）。
-        new_count = store_articles(db, feed, loaded.parsed)
+        new_ids = store_articles(db, feed, loaded.parsed)
         mark_fetched(feed, "ok", None)
         db.commit()
 
         # F5：feed 正文过短的文章去原网页补齐。任何失败都不影响本次刷新结果。
-        await extract.extract_pending(db, feed.id)
-        return RefreshResult(feed_id=feed.id, new_count=new_count, status="ok")
+        await extract.extract_pending(db, feed.id, spec=proxy_spec)
+
+        # F3：自动化只处理本次新增的文章，且放在抽取之后——
+        # 「字数 > 3000」这类条件必须看到抽取后的字数。
+        await automation.run_for_new_articles(db, feed.id, new_ids)
+
+        return RefreshResult(feed_id=feed.id, new_count=len(new_ids), status="ok")
 
 
 async def refresh_feeds(db: Session, feeds: list[Feed]) -> list[RefreshResult]:
     semaphore = asyncio.Semaphore(_BATCH_CONCURRENCY)
+    spec = proxy.load_spec(db)
 
     async def one(feed: Feed) -> RefreshResult:
         async with semaphore:
-            return await refresh_feed(db, feed)
+            return await refresh_feed(db, feed, spec=spec)
 
     return list(await asyncio.gather(*(one(feed) for feed in feeds)))
 
@@ -176,7 +198,7 @@ async def create_subscription(
     """新增订阅：先抓取校验并建 feed，再入库文章。失败抛 FetchError/ValueError。"""
     feed = db.scalar(select(Feed).where(Feed.url == url))
     if feed is None:
-        loaded = await load_remote(url)
+        loaded = await load_remote(url, proxy_spec=proxy.load_spec(db))
         feed = Feed(
             url=url,
             site_url=loaded.parsed.site_url,
@@ -188,8 +210,9 @@ async def create_subscription(
         )
         db.add(feed)
         db.flush()
-        store_articles(db, feed, loaded.parsed)
+        created = store_articles(db, feed, loaded.parsed)
         mark_fetched(feed, "ok", None)
+        _ = created  # 自动化不在「添加订阅」时跑，避免新增源瞬间触发一堆推送
 
     if folder_id is not None and db.get(Folder, folder_id) is None:
         raise ValueError("目录不存在")

@@ -1,13 +1,29 @@
-from . import ai, auth, data, feeds, folders, items, opml, settings, users
+from . import (
+    ai,
+    auth,
+    automation,
+    data,
+    feeds,
+    folders,
+    integrations,
+    items,
+    opml,
+    proxy,
+    settings,
+    users,
+)
 
 __all__ = [
     "ai",
     "auth",
+    "automation",
     "data",
     "feeds",
     "folders",
+    "integrations",
     "items",
     "opml",
+    "proxy",
     "settings",
     "users",
 ]

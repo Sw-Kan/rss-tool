@@ -4,8 +4,10 @@ import { Globe, Palette, Plug, Rss, Sparkles, Zap, type LucideIcon } from 'lucid
 import { Modal } from '../../components/Modal';
 import { useT } from '../../lib/i18n';
 import { AiTab } from './AiTab';
+import { AutomationTab } from './AutomationTab';
 import { AppearanceTab } from './AppearanceTab';
-import { PlaceholderTab } from './PlaceholderTab';
+import { IntegrationsTab } from './IntegrationsTab';
+import { ProxyTab } from './ProxyTab';
 import { RssTab } from './RssTab';
 
 export const SETTINGS_TABS = [
@@ -109,11 +111,15 @@ export function SettingsDialog({
       <Tabs.Content value="ai" className="outline-none">
         <AiTab />
       </Tabs.Content>
-      {(['integrations', 'automation', 'proxy'] as const).map((id) => (
-        <Tabs.Content key={id} value={id} className="outline-none">
-          <PlaceholderTab />
-        </Tabs.Content>
-      ))}
+      <Tabs.Content value="integrations" className="outline-none">
+        <IntegrationsTab />
+      </Tabs.Content>
+      <Tabs.Content value="automation" className="outline-none">
+        <AutomationTab />
+      </Tabs.Content>
+      <Tabs.Content value="proxy" className="outline-none">
+        <ProxyTab />
+      </Tabs.Content>
     </Modal>
   );
 }

@@ -9,6 +9,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     ForeignKey,
@@ -231,4 +232,64 @@ class AiResult(Base):
     content: Mapped[str] = mapped_column(Text, default="")
     tokens_in: Mapped[int] = mapped_column(Integer, default=0)
     tokens_out: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTimeUTC, default=utcnow)
+
+
+class Integration(Base):
+    """F2 集成配置。一个用户每种 kind 一行，具体字段放 config JSON。
+
+    - rsshub        : {base_url, access_key, env, params: [{name, scope, value, secret}]}
+    - obsidian      : {vault_path}
+    - feishu        : {webhook_url}
+    - custom_export : {endpoint}
+
+    为什么用 JSON 而不是宽表：四种集成的字段几乎没有重叠，摊平成表会有大量
+    nullable 列，且加一种集成就要改表结构。
+    """
+
+    __tablename__ = "integrations"
+    __table_args__ = (UniqueConstraint("user_id", "kind", name="uq_integration_user_kind"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTimeUTC, default=utcnow)
+
+
+class ProxyConfig(Base):
+    """F4 代理配置。**实例级单行**，不按用户分。
+
+    feed 与 article 是全局共享的（同一 URL 全库只抓一次），所以"每个用户走不同代理"
+    在模型上就不成立。本应用是单实例本地部署，代理本来就是这台机器的网络设置。
+    """
+
+    __tablename__ = "proxy_config"
+
+    id: Mapped[str] = mapped_column(String(20), primary_key=True, default="default")
+    mode: Mapped[str] = mapped_column(String(10), default="system")
+    url: Mapped[str] = mapped_column(String(500), default="")
+    no_proxy: Mapped[str] = mapped_column(String(1000), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTimeUTC, default=utcnow)
+
+
+class AutomationRule(Base):
+    """F3 自动化规则：当 → 如果 → 则。
+
+    设计稿每条规则只有一个「如果」和一个「则」，因此这里存单个对象而不是数组。
+    要支持多条件时再迁成 JSON 数组。
+    """
+
+    __tablename__ = "automation_rules"
+    __table_args__ = (Index("ix_rule_user_position", "user_id", "position"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80), default="新规则")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    trigger: Mapped[str] = mapped_column(String(30), default="item_arrived")
+    condition: Mapped[dict] = mapped_column(JSON, default=dict)
+    action: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTimeUTC, default=utcnow)

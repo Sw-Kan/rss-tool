@@ -115,14 +115,47 @@ SQLite，`backend/data/rss.db`。启动时 `create_all`，**无迁移**：表结
 
 索引：`(user_id, created_at)`。这张表既是结果缓存（命中即不再调上游），也是用量账本。
 
-## 后续模块的表设计（**本阶段尚未实现**）
+## integrations — M14
+
+| 字段 | 说明 |
+|---|---|
+| id, user_id, kind(unique(user_id,kind)) | kind ∈ `rsshub` / `obsidian` / `feishu` / `custom_export` |
+| enabled | 设计稿里 RSSHub 那行的开关 |
+| config | JSON，按 kind 不同：见 `services/integrations.py` 的 DEFAULT_CONFIGS |
+| updated_at | |
+
+`rsshub.params` 是 `[{name, scope, value, secret}]`。`secret=true` 的值只以掩码回传；
+回传值里带 `•` 一律视为「没改」，保留原文——避免掩码被当成真密钥存进库。
+
+## proxy_config — M16
+
+**实例级单行**（id 固定 `default`），不按用户分：feed/article 全库共享，"每用户不同代理"不成立。
+
+| 字段 | 说明 |
+|---|---|
+| mode | `system` \| `http` \| `https` \| `custom` |
+| url | 仅 `http` / `https` / `custom` 用；`system` 会被清空 |
+| no_proxy | 逗号分隔，支持精确域名、`.suffix`、`*.suffix`、CIDR |
+
+## automation_rules — M15
+
+| 字段 | 说明 |
+|---|---|
+| id, user_id, name, enabled, position | 按 position 顺序匹配 |
+| trigger | `item_arrived` \| `video_arrived` \| `picture_arrived` |
+| condition | JSON `{field, op, value}`。field × op 有交叉校验（如 `title` 只允许 `contains`/`eq`） |
+| action | JSON `{type}`，type ∈ `favorite`/`mark_read`/`mark_unread`/`feishu`/`obsidian`/`custom_export` |
+
+设计稿每条规则只有一个「如果」和一个「则」，所以存单个对象而不是数组。
+
+## 后续模块的表设计（**尚未实现**）
 
 记录下来只为划定边界。项目无迁移机制，提前建表没有价值；真正实现时再加。
 
 - F1 AI：已实现，见上方 `ai_providers` / `ai_results`。
-- F2 集成：`integrations(user_id, kind, config_json, enabled)`，kind ∈ `rsshub`/`obsidian`/`feishu`/`custom`
-- F3 自动化：`automation_rules(user_id, enabled, trigger, conditions_json, actions_json, position)`
-- F4 代理：`proxy_configs(user_id, mode, http_url, https_url, no_proxy)`
+- F2 集成：已实现，见上方 `integrations`。
+- F3 自动化：已实现，见上方 `automation_rules`。
+- F4 代理：已实现，见上方 `proxy_config`（改成实例级单行）。
 - F5 全文抽取：已实现，见 `docs/architecture.md`。
 - F6 媒体缓存：`media_cache(hash, url, path, bytes, fetched_at)`
 - F7 i18n：已实现，无新表，见 `user_settings.language`。

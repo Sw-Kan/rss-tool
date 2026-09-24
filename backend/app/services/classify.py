@@ -18,6 +18,10 @@ IMAGE_EXT = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif")
 PICTURE_TEXT_LIMIT = 80
 
 _TAG_RE = re.compile(r"<[^>]+>")
+# 用来数「有文字的段落块」：纯图片帖通常 0-1 块，短摘要正文帖有多块
+_BLOCK_RE = re.compile(
+    r"<(p|div|section|blockquote|li)\b[^>]*>(.*?)</\1>", re.IGNORECASE | re.DOTALL
+)
 _IMG_RE = re.compile(r"<img\b[^>]*?\bsrc\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE)
 _CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
 _WORD_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9'’\-]*")
@@ -69,6 +73,13 @@ def count_words(*html_parts: str | None) -> int:
     cjk = len(_CJK_RE.findall(text))
     non_cjk = len(_WORD_RE.findall(_CJK_RE.sub(" ", text)))
     return cjk + non_cjk
+
+
+def text_block_count(html: str | None) -> int:
+    """数一数有多少个「装着文字」的块级元素。"""
+    if not html:
+        return 0
+    return sum(1 for _tag, inner in _BLOCK_RE.findall(html) if html_to_text(inner))
 
 
 def first_image_in_html(*html_parts: str | None) -> str | None:
@@ -130,8 +141,11 @@ def classify(entry: ParsedEntry) -> Classification:
     for ref in [*entry.enclosures, *entry.media_contents]:
         if _is_image_ref(ref):
             return Classification("picture", ref.url, *_dims(ref), None, word_count)
-    text = html_to_text(entry.content_html or entry.summary_html)
-    if image and len(text) < PICTURE_TEXT_LIMIT:
+    # 「内容只是图片」才归为 picture。文字短但仍有多段结构时不能算图片 ——
+    # 那多半是「feed 只给短摘要 + 配图」的文章，判成图片就会永远跳过全文抽取（F5）。
+    body = entry.content_html or entry.summary_html
+    text = html_to_text(body)
+    if image and len(text) < PICTURE_TEXT_LIMIT and text_block_count(body) <= 1:
         return Classification("picture", image.url, *_dims(image), None, word_count)
 
     # ③ 文章

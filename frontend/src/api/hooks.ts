@@ -23,13 +23,18 @@ import type {
   AppSettings,
   Feed,
   Folder,
+  Integration,
+  IntegrationKind,
+  IntegrationTest,
   FolderList,
   Item,
   ItemContext,
   ItemDetail,
   ItemPage,
   OpmlImportResult,
+  ProxyConfig,
   ReaderSearch,
+  Rule,
   RefreshResult,
   SidebarSummary,
   User,
@@ -428,5 +433,80 @@ export function useGenerateAi() {
       }));
       void client.invalidateQueries({ queryKey: keys.aiUsage });
     },
+  });
+}
+
+/* ---------------- F2 集成 / F3 自动化 / F4 代理 ---------------- */
+
+export function useIntegrations() {
+  return useQuery({
+    queryKey: keys.integrations,
+    queryFn: () => http.get<{ items: Integration[] }>('/api/integrations'),
+  });
+}
+
+export function useUpdateIntegration() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      kind,
+      ...patch
+    }: { kind: IntegrationKind; enabled?: boolean } & Partial<
+      Pick<Integration, 'rsshub' | 'obsidian' | 'feishu' | 'custom_export'>
+    >) => http.put<Integration>(`/api/integrations/${kind}`, patch),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.integrations }),
+  });
+}
+
+export function useTestRsshub() {
+  return useMutation({
+    mutationFn: () => http.post<IntegrationTest>('/api/integrations/rsshub/test'),
+  });
+}
+
+export function useProxyConfig() {
+  return useQuery({ queryKey: keys.proxy, queryFn: () => http.get<ProxyConfig>('/api/proxy') });
+}
+
+export function useUpdateProxy() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: Partial<ProxyConfig>) => http.patch<ProxyConfig>('/api/proxy', patch),
+    onSuccess: (data) => client.setQueryData(keys.proxy, data),
+  });
+}
+
+export function useTestProxy() {
+  return useMutation({
+    mutationFn: () => http.post<IntegrationTest>('/api/proxy/test'),
+  });
+}
+
+export function useRules() {
+  return useQuery({ queryKey: keys.rules, queryFn: () => http.get<Rule[]>('/api/automation/rules') });
+}
+
+export function useCreateRule() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<Rule>) => http.post<Rule>('/api/automation/rules', body),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.rules }),
+  });
+}
+
+export function useUpdateRule() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...patch }: { id: string } & Partial<Rule>) =>
+      http.patch<Rule>(`/api/automation/rules/${id}`, patch),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.rules }),
+  });
+}
+
+export function useDeleteRule() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => http.del<void>(`/api/automation/rules/${id}`),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.rules }),
   });
 }

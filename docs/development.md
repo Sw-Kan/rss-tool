@@ -53,6 +53,9 @@ make db-reset       # 删除 rss.db 与 uploads/，下次启动重建
 | 加自建 RSSHub / 局域网源 | 设 `ALLOW_PRIVATE_FETCH=true` 后重启后端；默认会被 SSRF 防护拒绝 |
 | 看全文抽取效果 | 库里查：`sqlite3 backend/data/rss.db "select extract_status,content_source,count(*) from articles group by 1,2"` |
 | 关掉全文抽取 | 设 `EXTRACT_ENABLED=false`（调试抓取管线时用） |
+| 本机 RSSHub | `docker start rsshub`；容器内用 `http://rsshub:1200`，宿主用 `http://127.0.0.1:1200`，两者都需要 `ALLOW_PRIVATE_FETCH=true` |
+| 看自动化是否触发 | 后端日志 `automation: 规则「…」跳过/动作失败`；库里 `user_item_state` 看收藏与已读 |
+| 看代理是否生效 | 设置 → 代理 → 测试连接；返回里会写明「经由 …」或「跟随系统」 |
 | 不花钱验证 AI 链路 | 起个假上游（见下），供应商填 `http://127.0.0.1:8977/v1` |
 | 看 AI 用量 | `sqlite3 backend/data/rss.db "select kind,sum(tokens_in+tokens_out) from ai_results group by 1"` |
 
@@ -95,6 +98,12 @@ make typecheck  # tsc --noEmit
 - [ ] 设置 → 外观 → 语言切到 English：导航、列表、设置弹窗、AI tab、aria 标签全部变英文，刷新后保持
 - [ ] 切到 English 后点「Summary」→ 上游收到的 prompt 是英文（可用假上游打印请求体验证）
 - [ ] 登录页右上角胶囊在未登录状态下也能切换语言，并按浏览器语言给默认值
+- [ ] 设置 → 集成：填 RSSHub 服务地址 → 点卡片左侧的循环图标 → 显示「连接正常 · Nms」
+- [ ] 集成里加一条路由参数（如 `limit` / `/twitter/user` / `20`），然后添加订阅时只填 `/twitter/user/xxx` → 库里存的地址已带上参数
+- [ ] 集成 → Obsidian 填绝对路径 → 自动化加一条「新文章到达 + 标题包含 X → 保存到 Obsidian」→ 刷新后仓库里出现 md 文件
+- [ ] 设置 → 代理：切到「本地 HTTP 代理」填一个不存在的地址 → 测试连接报失败；切回「默认」→ 恢复
+- [ ] 设置 → 自动化：新建规则、改条件与动作、关掉开关 → 刷新后只有开启的规则生效
+- [ ] 切换设置弹窗的六个 tab，窗口尺寸始终 960×760（外壳不动，只有内容区滚动）
 
 ### 不花钱验证 AI 链路
 

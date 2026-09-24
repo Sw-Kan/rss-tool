@@ -20,6 +20,9 @@ export const keys = {
   aiPresets: ['ai', 'presets'] as const,
   aiUsage: ['ai', 'usage'] as const,
   aiResults: (articleId: string) => ['ai', 'results', articleId] as const,
+  integrations: ['integrations'] as const,
+  proxy: ['proxy'] as const,
+  rules: ['automation', 'rules'] as const,
 };
 
 /** 任何写操作完成后统一失效这些 key（AGENTS.md §跨模块契约）。 */

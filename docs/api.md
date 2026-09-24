@@ -159,6 +159,54 @@ type AiResultOut  = { kind, content, model, cached: boolean, tokens_in, tokens_o
 - 错误码：未配置/配置非法 → **400**；上游 HTTP 错误、超时、响应不可解析 → **502**；本月用量超 `token_limit` → **429**。
 - `token_limit` 通过 `PATCH /api/settings {ai_token_limit}` 修改，0 = 不限。
 
+## 集成 — M14
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/integrations` | `{items: IntegrationOut[]}`，四种 kind 都会返回（缺的给默认值） |
+| PUT | `/api/integrations/{kind}` | body: `{enabled?, rsshub?, obsidian?, feishu?, custom_export?}` |
+| POST | `/api/integrations/rsshub/test` | `{ok, message, latency_ms}` |
+
+```ts
+type IntegrationOut = { kind: 'rsshub'|'obsidian'|'feishu'|'custom_export'
+                        enabled: boolean; updated_at: string | null
+                        rsshub?: { base_url, access_key, env, params: RsshubParam[] }
+                        obsidian?: { vault_path }; feishu?: { webhook_url }
+                        custom_export?: { endpoint } }
+type RsshubParam = { name: string; scope: string; value: string; secret: boolean }
+```
+
+- `access_key` 与 `secret=true` 的参数值只以掩码回传；回传值里只要带 `•` 就视为「没改」。
+- `POST /api/feeds` 的 `url` 允许是**裸路由**（`/sspai/matrix`），会用这里的 `base_url` 展开；未配置则 400。
+
+## 自动化 — M15
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/automation/rules` | `RuleOut[]`，按 `position` |
+| POST | `/api/automation/rules` | `{name?, trigger?, condition?, action?}` → 201 |
+| PATCH | `/api/automation/rules/{id}` | 同上字段可选 |
+| DELETE | `/api/automation/rules/{id}` | 204 |
+
+```ts
+type RuleOut = { id, name, enabled, position,
+                 trigger: 'item_arrived'|'video_arrived'|'picture_arrived',
+                 condition: { field: 'title'|'word_count'|'channel'|'feed'|'kind',
+                              op: 'contains'|'gt'|'lt'|'eq', value: string },
+                 action: { type: 'favorite'|'mark_read'|'mark_unread'|'feishu'|'obsidian'|'custom_export' } }
+```
+
+`field`×`op` 有交叉校验（`title` 只接受 `contains`/`eq`，`word_count` 只接受 `gt`/`lt`/`eq`，`kind` 只接受 `eq`），
+不合法组合 422 —— 否则会写出一条永远不命中的规则。
+
+## 代理 — M16
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/proxy` | `{mode, url, no_proxy}` |
+| PATCH | `/api/proxy` | 同上字段可选；`mode=system` 会清空 `url` |
+| POST | `/api/proxy/test` | 真实发一次请求，`{ok, message, latency_ms}` |
+
 ## 后续模块预留（尚未挂载）
 
-`/api/integrations/*`（F2）、`/api/automation/*`（F3）、`/api/proxy/*`（F4）、`/api/media/*`（F6）。见 `docs/roadmap.md`。
+`/api/media/*`（F6）。见 `docs/roadmap.md`。

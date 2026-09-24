@@ -12,14 +12,26 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import scheduler
 from .config import get_settings
 from .db import init_db
-from .routers import ai, auth, data, feeds, folders, items, opml, users
+from .routers import (
+    ai,
+    auth,
+    automation,
+    data,
+    feeds,
+    folders,
+    integrations,
+    items,
+    opml,
+    proxy,
+    users,
+)
 from .routers import settings as settings_router
 from .schemas import HealthOut
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 # 后续模块预留（尚未挂载，见 docs/roadmap.md）：
-#   /api/integrations  /api/automation  /api/proxy  /api/media
+#   /api/media
 
 
 @asynccontextmanager
@@ -49,6 +61,9 @@ app.include_router(settings_router.router)
 app.include_router(opml.router)
 app.include_router(data.router)
 app.include_router(ai.router)
+app.include_router(integrations.router)
+app.include_router(automation.router)
+app.include_router(proxy.router)
 
 
 @app.get("/api/health", response_model=HealthOut, tags=["health"])

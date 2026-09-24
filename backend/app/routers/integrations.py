@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
 
 from ..deps import CurrentUser, DbSession
 from ..schemas import (
@@ -15,6 +15,7 @@ from ..schemas import (
     IntegrationTestOut,
     ObsidianConfig,
     RsshubConfig,
+    RsshubEnvSnippetOut,
 )
 from ..services import integrations
 
@@ -68,6 +69,18 @@ async def test_rsshub(user: CurrentUser, db: DbSession) -> IntegrationTestOut:
     config = integrations.get_config(db, user.id, "rsshub")
     ok, message, latency = await integrations.test_rsshub(config)
     return IntegrationTestOut(ok=ok, message=message, latency_ms=latency)
+
+
+@router.get("/rsshub/env-snippet", response_model=RsshubEnvSnippetOut)
+def rsshub_env_snippet(user: CurrentUser, db: DbSession, response: Response) -> RsshubEnvSnippetOut:
+    """RSSHub 端环境变量片段（明文），供复制到 RSSHub 的启动命令 / `.env`。
+
+    集成凭据唯一明文回传的地方：别的接口只给掩码，但片段不能复制就没意义。
+    带 no-store，避免命令连同凭据被浏览器缓存到磁盘。
+    """
+    response.headers["Cache-Control"] = "no-store"
+    config = integrations.get_config(db, user.id, "rsshub")
+    return RsshubEnvSnippetOut(**integrations.env_snippet(config))
 
 
 @router.get("/custom_export/default-schema")

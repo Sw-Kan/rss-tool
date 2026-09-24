@@ -1,9 +1,9 @@
 import { Pencil, Plus, RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { useIntegrations, useTestRsshub, useUpdateIntegration } from '../../api/hooks';
+import { useIntegrations, useRsshubEnvSnippet, useTestRsshub, useUpdateIntegration } from '../../api/hooks';
 import { Button } from '../../components/Button';
-import { Switch } from '../../components/Field';
+import { Badge, Switch } from '../../components/Field';
 import { useT } from '../../lib/i18n';
 import type { RsshubConfig, RsshubParam } from '../../types';
 import { CustomExportDialog, ParamDialog } from './IntegrationDialogs';
@@ -22,6 +22,7 @@ export function IntegrationsTab() {
   const row = (kind: string) => integrations.data?.items.find((item) => item.kind === kind);
   const rsshub = row('rsshub')?.rsshub;
   const params = rsshub?.params ?? [];
+  const snippet = useRsshubEnvSnippet();
   const currentRsshub = (): RsshubConfig =>
     rsshub ?? { base_url: '', access_key: '', env: '', params: [] };
 
@@ -140,7 +141,8 @@ export function IntegrationsTab() {
         ) : (
           <div className="rounded-xl border border-line">
             <div className="flex items-center gap-2 border-b border-line px-4 py-2 text-2xs font-semibold text-ink-3">
-              <span className="w-44">{t.integrations.colName}</span>
+              <span className="w-40">{t.integrations.colName}</span>
+              <span className="w-24">{t.integrations.colTarget}</span>
               <span className="flex-1">{t.integrations.colScope}</span>
               <span className="w-56">{t.integrations.colValue}</span>
               <span className="w-6" />
@@ -152,8 +154,17 @@ export function IntegrationsTab() {
                   index > 0 ? 'border-t border-line' : ''
                 }`}
               >
-                <span className="w-44 truncate text-xs font-medium text-ink">{param.name}</span>
-                <span className="flex-1 truncate text-[11.5px] text-ink-2">{param.scope}</span>
+                <span className="w-40 truncate text-xs font-medium text-ink">{param.name}</span>
+                <span className="w-24">
+                  {param.target === 'env' ? (
+                    <Badge tone="neutral">{t.integrations.targetEnv}</Badge>
+                  ) : (
+                    <span className="text-[11.5px] text-ink-3">{t.integrations.targetQuery}</span>
+                  )}
+                </span>
+                <span className="flex-1 truncate text-[11.5px] text-ink-2">
+                  {param.target === 'env' ? '—' : param.scope}
+                </span>
                 <span className="w-56 truncate text-[11.5px] text-ink-2">{param.value}</span>
                 <button
                   type="button"
@@ -172,6 +183,18 @@ export function IntegrationsTab() {
         )}
 
         <p className="mt-2 text-2xs text-ink-3">{t.integrations.paramsNote}</p>
+      </section>
+
+      <section>
+        <h3 className="mb-2 text-sm font-semibold text-ink">{t.integrations.envSnippetTitle}</h3>
+        <p className="mb-3 text-2xs text-ink-2">{t.integrations.envSnippetHint}</p>
+        <div className="space-y-2">
+          <CopyField
+            label={t.integrations.envSnippetDocker}
+            text={snippet.data?.docker_flags ?? ''}
+          />
+          <CopyField label={t.integrations.envSnippetDotenv} text={snippet.data?.dotenv ?? ''} />
+        </div>
       </section>
 
       <section>
@@ -242,6 +265,39 @@ export function IntegrationsTab() {
 
 const MINI_INPUT =
   'h-[34px] w-full rounded-lg border border-line bg-surface px-2.5 text-[11.5px] text-ink placeholder:text-ink-3 outline-none transition-colors focus:border-brand';
+
+/** 只读片段 + 复制。rss-tool 改不了别人的容器，只能把命令拼好给人贴。 */
+function CopyField({ label, text }: { label: string; text: string }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1500);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  return (
+    <div className="rounded-xl border border-line bg-page px-4 py-3">
+      <div className="mb-1.5 flex items-center gap-2">
+        <span className="text-[10.5px] text-ink-3">{label}</span>
+        <button
+          type="button"
+          disabled={text === ''}
+          onClick={() => {
+            void navigator.clipboard.writeText(text).then(() => setCopied(true));
+          }}
+          className="ml-auto inline-flex h-6 shrink-0 items-center rounded-md border border-line bg-surface px-2 text-[11px] font-semibold text-ink transition-colors hover:bg-subtle disabled:opacity-40"
+        >
+          {copied ? t.integrations.copied : t.integrations.copy}
+        </button>
+      </div>
+      <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[11.5px] text-ink-2">
+        {text || '—'}
+      </pre>
+    </div>
+  );
+}
 
 function MiniInput({
   label,

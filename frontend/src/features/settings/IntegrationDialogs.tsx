@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 
 import { useDefaultExportSchema, useTestCustomExport, useUpdateIntegration } from '../../api/hooks';
 import { Button } from '../../components/Button';
-import { Field, TextArea, TextInput } from '../../components/Field';
+import { Field, Segmented, TextArea, TextInput } from '../../components/Field';
 import { Modal } from '../../components/Modal';
 import { useT } from '../../lib/i18n';
-import type { CustomExportConfig, RsshubParam } from '../../types';
+import type { CustomExportConfig, RsshubParam, RsshubParamTarget } from '../../types';
 
 /** 「自定义导出」：推送接口 + JSON 模板 + 测试推送。 */
 export function CustomExportDialog({
@@ -102,7 +102,12 @@ export function CustomExportDialog({
   );
 }
 
-/** 「路由参数」编辑弹窗：表格里的铅笔与「+ 添加参数」共用它。 */
+/** 「路由参数」编辑弹窗：表格里的铅笔与「+ 添加参数」共用它。
+ *
+ * 两种用途差别很大，所以字段也跟着换：
+ * - 拼到路由（query）：参数名 + 作用范围 + 可选密文；
+ * - 传给 RSSHub（env）：RSSHub 自己的 config，一律按凭据处理、不进订阅地址。
+ */
 export function ParamDialog({
   open,
   onOpenChange,
@@ -120,6 +125,7 @@ export function ParamDialog({
   onRemove: (index: number) => void;
 }) {
   const t = useT();
+  const [target, setTarget] = useState<RsshubParamTarget>('query');
   const [name, setName] = useState('');
   const [scope, setScope] = useState('');
   const [value, setValue] = useState('');
@@ -127,6 +133,7 @@ export function ParamDialog({
 
   useEffect(() => {
     if (!open) return;
+    setTarget(param?.target ?? 'query');
     setName(param?.name ?? '');
     setScope(param?.scope ?? '');
     setValue(param?.value ?? '');
@@ -134,6 +141,7 @@ export function ParamDialog({
   }, [open, param]);
 
   const dialog = t.integrationDialog;
+  const toRsshub = target === 'env';
 
   return (
     <Modal
@@ -165,7 +173,13 @@ export function ParamDialog({
             disabled={name.trim() === ''}
             onClick={() => {
               onSave(
-                { name: name.trim(), scope: scope.trim(), value: value.trim(), secret },
+                {
+                  name: name.trim(),
+                  scope: toRsshub ? '' : scope.trim(),
+                  value: value.trim(),
+                  secret: toRsshub ? true : secret,
+                  target,
+                },
                 index,
               );
               onOpenChange(false);
@@ -177,39 +191,59 @@ export function ParamDialog({
       }
     >
       <div className="space-y-4">
-        <Field label={dialog.paramName} hint={dialog.paramNameHint}>
+        <div>
+          <span className="mb-1 block text-xs font-medium text-ink-2">{dialog.paramTarget}</span>
+          <Segmented
+            label={dialog.paramTarget}
+            value={target}
+            onChange={setTarget}
+            options={[
+              { value: 'query', label: dialog.paramTargetQuery },
+              { value: 'env', label: dialog.paramTargetEnv },
+            ]}
+          />
+          <span className="mt-1 block text-xs text-ink-3">{dialog.paramTargetHint}</span>
+        </div>
+
+        <Field label={toRsshub ? dialog.paramEnvName : dialog.paramName} hint={toRsshub ? dialog.paramEnvNameHint : dialog.paramNameHint}>
           <TextInput
             autoFocus
             value={name}
-            placeholder="limit"
+            placeholder={toRsshub ? 'PIXIV_REFRESH_TOKEN' : 'limit'}
             onChange={(event) => setName(event.target.value)}
           />
         </Field>
 
-        <Field label={dialog.paramScope} hint={dialog.paramScopeHint}>
-          <TextInput
-            value={scope}
-            placeholder={dialog.paramScopePlaceholder}
-            onChange={(event) => setScope(event.target.value)}
-          />
-        </Field>
+        {toRsshub ? null : (
+          <Field label={dialog.paramScope} hint={dialog.paramScopeHint}>
+            <TextInput
+              value={scope}
+              placeholder={dialog.paramScopePlaceholder}
+              onChange={(event) => setScope(event.target.value)}
+            />
+          </Field>
+        )}
 
         <Field label={dialog.paramValue}>
           <TextInput value={value} placeholder="20" onChange={(event) => setValue(event.target.value)} />
         </Field>
 
-        <label className="flex items-start gap-2">
-          <input
-            type="checkbox"
-            className="mt-0.5"
-            checked={secret}
-            onChange={(event) => setSecret(event.target.checked)}
-          />
-          <span>
-            <span className="block text-sm text-ink">{dialog.paramSecret}</span>
-            <span className="block text-xs text-ink-3">{dialog.paramSecretHint}</span>
-          </span>
-        </label>
+        {toRsshub ? (
+          <p className="text-xs text-ink-3">{dialog.paramEnvSecretHint}</p>
+        ) : (
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={secret}
+              onChange={(event) => setSecret(event.target.checked)}
+            />
+            <span>
+              <span className="block text-sm text-ink">{dialog.paramSecret}</span>
+              <span className="block text-xs text-ink-3">{dialog.paramSecretHint}</span>
+            </span>
+          </label>
+        )}
       </div>
     </Modal>
   );

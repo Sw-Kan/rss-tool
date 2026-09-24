@@ -486,3 +486,162 @@ def test_custom_export_test_reports_upstream_error(auth_client: TestClient) -> N
 
     assert body["ok"] is False
     assert "500" in body["message"]
+
+
+# ---------- 参数用途：拼到路由 / 传给 RSSHub ----------
+
+
+def test_expand_route_skips_env_params() -> None:
+    """凭据绝不能拼进订阅地址 —— 那会被写进 feeds.url，全库共享。"""
+    config = {
+        "base_url": RSSHUB,
+        "access_key": "",
+        "params": [
+            {"name": "PIXIV_REFRESH_TOKEN", "value": "tok", "target": "env"},
+            {"name": "limit", "scope": "/pixiv", "value": "20", "target": "query"},
+        ],
+    }
+    url = integrations.expand_route(config, "/pixiv/user/1")
+    assert "limit=20" in url
+    assert "PIXIV_REFRESH_TOKEN" not in url
+    assert "tok" not in url
+
+
+def test_normalize_params_fixes_silent_failures() -> None:
+    """作用范围漏斜杠、凭据没勾密文 —— 两种「静默失效」都在写库前归一。"""
+    normalized = integrations.normalize_params(
+        [
+            {"name": "limit", "scope": "pixiv", "value": "20"},
+            {"name": "refresh_token", "value": "t"},
+            {"name": "PIXIV_REFRESH_TOKEN", "scope": "/pixiv", "value": "t", "target": "env"},
+        ]
+    )
+    # 老数据没有 target → 按 query 走，行为不变；scope 补上斜杠，否则永远拼不上
+    assert normalized[0]["target"] == "query"
+    assert normalized[0]["scope"] == "/pixiv"
+    assert normalized[0]["secret"] is False
+    # 名字像凭据 / env 型 → 强制密文
+    assert normalized[1]["secret"] is True
+    assert normalized[2]["target"] == "env"
+    assert normalized[2]["scope"] == ""
+    assert normalized[2]["secret"] is True
+
+
+def test_masked_config_hides_credentials() -> None:
+    masked = integrations.masked_config(
+        "rsshub",
+        {
+            "access_key": "real-key-1234",
+            "params": [
+                {"name": "PIXIV_REFRESH_TOKEN", "value": "pixiv-secret", "target": "env"},
+                {"name": "github_token", "value": "gh-secret"},
+                {"name": "limit", "value": "20"},
+            ],
+        },
+    )
+    assert masked["access_key"] == "real-••••••••1234"
+    values = [item["value"] for item in masked["params"]]
+    assert "•" in values[0] and "pixiv-secret" not in values[0]
+    assert "•" in values[1] and "gh-secret" not in values[1]
+    assert values[2] == "20"  # 普通参数照旧明文
+
+
+def test_env_param_name_must_be_upper_snake(auth_client: TestClient) -> None:
+    response = auth_client.put(
+        "/api/integrations/rsshub",
+        json={
+            "rsshub": {
+                "base_url": RSSHUB,
+                "params": [{"name": "pixiv_token", "value": "x", "target": "env"}],
+            }
+        },
+    )
+    assert response.status_code == 400
+    assert "PIXIV_REFRESH_TOKEN" in response.json()["detail"]
+
+
+def test_params_are_normalized_on_write(auth_client: TestClient) -> None:
+    auth_client.put(
+        "/api/integrations/rsshub",
+        json={
+            "rsshub": {
+                "base_url": RSSHUB,
+                "params": [
+                    {"name": "limit", "scope": "pixiv", "value": "20"},
+                    {"name": "PIXIV_REFRESH_TOKEN", "value": "pixiv-secret", "target": "env"},
+                ],
+            }
+        },
+    )
+    params = auth_client.get("/api/integrations").json()["items"][0]["rsshub"]["params"]
+    assert params[0]["scope"] == "/pixiv"
+    assert params[0]["target"] == "query"
+    assert params[1]["target"] == "env"
+    assert params[1]["scope"] == ""
+    assert params[1]["secret"] is True
+    assert "•" in params[1]["value"]  # 回传仍是掩码
+
+
+def test_env_param_masked_value_is_not_stored(auth_client: TestClient) -> None:
+    """前端把掩码原样送回（改别的字段时）不能把真值抹成掩码。"""
+    auth_client.put(
+        "/api/integrations/rsshub",
+        json={
+            "rsshub": {
+                "base_url": RSSHUB,
+                "params": [{"name": "PIXIV_REFRESH_TOKEN", "value": "tok-1234", "target": "env"}],
+            }
+        },
+    )
+    masked = auth_client.get("/api/integrations").json()["items"][0]["rsshub"]["params"][0]
+    auth_client.put(
+        "/api/integrations/rsshub",
+        json={"rsshub": {"base_url": RSSHUB, "env": "CACHE_TYPE=memory", "params": [masked]}},
+    )
+
+    from app.db import SessionLocal
+
+    with SessionLocal() as session:
+        config = integrations.get_config(session, _only_user_id(session), "rsshub")
+    assert config["params"][0]["value"] == "tok-1234"
+    assert config["env"] == "CACHE_TYPE=memory"
+
+
+# ---------- RSSHub 端 env 片段 ----------
+
+
+def test_env_snippet_renders_both_forms(auth_client: TestClient) -> None:
+    auth_client.put(
+        "/api/integrations/rsshub",
+        json={
+            "rsshub": {
+                "base_url": RSSHUB,
+                "env": "CACHE_TYPE=memory, CACHE_EXPIRE=600",
+                "params": [
+                    {"name": "PIXIV_REFRESH_TOKEN", "value": "tok en", "target": "env"},
+                    {"name": "limit", "scope": "/pixiv", "value": "20"},
+                ],
+            }
+        },
+    )
+    response = auth_client.get("/api/integrations/rsshub/env-snippet")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+
+    body = response.json()
+    assert body["dotenv"] == "PIXIV_REFRESH_TOKEN=tok en\nCACHE_TYPE=memory\nCACHE_EXPIRE=600"
+    # 值里有空格时交给 shlex 转义
+    assert body["docker_flags"] == (
+        "-e PIXIV_REFRESH_TOKEN='tok en' -e CACHE_TYPE=memory -e CACHE_EXPIRE=600"
+    )
+    # query 型参数是拼订阅地址的，不该混进环境变量
+    assert "limit" not in body["dotenv"]
+
+
+def test_env_snippet_is_empty_without_config(auth_client: TestClient) -> None:
+    body = auth_client.get("/api/integrations/rsshub/env-snippet").json()
+    assert body == {"dotenv": "", "docker_flags": ""}
+
+
+def test_env_snippet_requires_login(client: TestClient) -> None:
+    assert client.get("/api/integrations/rsshub/env-snippet").status_code == 401

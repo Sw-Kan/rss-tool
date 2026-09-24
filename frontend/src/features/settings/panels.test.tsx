@@ -9,6 +9,11 @@ import { AutomationTab } from './AutomationTab';
 import { IntegrationsTab } from './IntegrationsTab';
 import { ProxyTab } from './ProxyTab';
 
+const SNIPPET = {
+  dotenv: 'PIXIV_REFRESH_TOKEN=tok\nCACHE_TYPE=memory',
+  docker_flags: "-e PIXIV_REFRESH_TOKEN='tok' -e CACHE_TYPE=memory",
+};
+
 const INTEGRATIONS = {
   items: [
     {
@@ -20,8 +25,21 @@ const INTEGRATIONS = {
         access_key: 'sec-••••••••1234',
         env: 'CACHE_TYPE=memory',
         params: [
-          { name: 'cookie', scope: '/zhihu', value: 'z_c0=••••••••', secret: true },
-          { name: 'limit', scope: '/twitter/user', value: '20', secret: false },
+          { name: 'cookie', scope: '/zhihu', value: 'z_c0=••••••••', secret: true, target: 'query' },
+          {
+            name: 'limit',
+            scope: '/twitter/user',
+            value: '20',
+            secret: false,
+            target: 'query',
+          },
+          {
+            name: 'PIXIV_REFRESH_TOKEN',
+            scope: '',
+            value: '••••••••',
+            secret: true,
+            target: 'env',
+          },
         ],
       },
     },
@@ -92,6 +110,7 @@ function stubFetch() {
       method: (init?.method ?? 'GET').toUpperCase(),
       body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body,
     });
+    if (url.includes('/api/integrations/rsshub/env-snippet')) return json(SNIPPET);
     if (url.includes('/api/integrations')) return json(INTEGRATIONS);
     if (url.includes('/api/proxy')) return json(PROXY);
     if (url.includes('/api/automation/rules')) return json(RULES);
@@ -156,8 +175,14 @@ describe('IntegrationsTab', () => {
       const put = calls.find((call) => call.method === 'PUT');
       expect(put).toBeTruthy();
       const params = (put?.body as { rsshub: { params: unknown[] } }).rsshub.params;
-      expect(params).toHaveLength(3);
-      expect(params[2]).toEqual({ name: 'limit', scope: '/twitter/user', value: '20', secret: false });
+      expect(params).toHaveLength(4);
+      expect(params[3]).toEqual({
+        name: 'limit',
+        scope: '/twitter/user',
+        value: '20',
+        secret: false,
+        target: 'query',
+      });
     });
   });
 
@@ -345,5 +370,55 @@ describe('ProxyTab', () => {
     fireEvent.click(screen.getByText('测试连接'));
 
     expect(await screen.findByText(/连接正常.*32ms/)).toBeTruthy();
+  });
+});
+
+describe('RSSHub 参数用途与 env 片段', () => {
+  it('marks parameters that go to RSSHub and shows the code snippet', async () => {
+    renderTab(<IntegrationsTab />);
+    await waitFor(() => expect(screen.getByText('PIXIV_REFRESH_TOKEN')).toBeTruthy());
+
+    // 表格里的用途列：env 参数打徽标，query 参数显示作用范围
+    expect(screen.getByText('传给 RSSHub')).toBeTruthy();
+    expect(screen.getAllByText('拼到路由')).toHaveLength(2);
+    expect(screen.getByText('/zhihu')).toBeTruthy();
+
+    // 片段区块：两段都来自新接口
+    expect(screen.getByText('RSSHub 端环境变量')).toBeTruthy();
+    expect(screen.getByText("-e PIXIV_REFRESH_TOKEN='tok' -e CACHE_TYPE=memory")).toBeTruthy();
+    expect(screen.getByText(/PIXIV_REFRESH_TOKEN=tok/)).toBeTruthy();
+    expect(screen.getAllByText('复制')).toHaveLength(2);
+  });
+
+  it('switches the dialog fields when the parameter is meant for RSSHub', async () => {
+    renderTab(<IntegrationsTab />);
+    await waitFor(() => expect(screen.getByText('添加参数')).toBeTruthy());
+    fireEvent.click(screen.getByText('添加参数'));
+    await waitFor(() => expect(screen.getByLabelText('参数名')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('radio', { name: '传给 RSSHub' }));
+
+    // 作用范围与密文勾选对 env 型没有意义：隐藏，且保存时强制 secret
+    expect(screen.queryByLabelText('作用范围')).toBeNull();
+    expect(screen.queryByLabelText('作为密文处理')).toBeNull();
+    expect(screen.getByLabelText('变量名')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('变量名'), {
+      target: { value: 'PIXIV_REFRESH_TOKEN' },
+    });
+    fireEvent.change(screen.getByLabelText('值'), { target: { value: 'tok' } });
+    fireEvent.click(screen.getByText('保存'));
+
+    await waitFor(() => {
+      const puts = calls.filter((call) => call.method === 'PUT');
+      const body = puts[puts.length - 1]?.body as { rsshub: { params: unknown[] } };
+      expect(body.rsshub.params[body.rsshub.params.length - 1]).toEqual({
+        name: 'PIXIV_REFRESH_TOKEN',
+        scope: '',
+        value: 'tok',
+        secret: true,
+        target: 'env',
+      });
+    });
   });
 });

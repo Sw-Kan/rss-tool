@@ -37,6 +37,7 @@ import type {
   ReaderSearch,
   Rule,
   RefreshResult,
+  RsshubEnvSnippet,
   SidebarSummary,
   User,
 } from '../types';
@@ -536,7 +537,20 @@ export function useUpdateIntegration() {
     }: { kind: IntegrationKind; enabled?: boolean } & Partial<
       Pick<Integration, 'rsshub' | 'obsidian' | 'feishu' | 'custom_export'>
     >) => http.put<Integration>(`/api/integrations/${kind}`, patch),
-    onSuccess: () => client.invalidateQueries({ queryKey: keys.integrations }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.integrations });
+      // 片段是按参数现算的，参数一改就得重算
+      void client.invalidateQueries({ queryKey: keys.rsshubEnvSnippet });
+    },
+  });
+}
+
+/** RSSHub 端环境变量片段（明文，供复制到 RSSHub 的启动命令 / `.env`）。 */
+export function useRsshubEnvSnippet(enabled = true) {
+  return useQuery({
+    queryKey: keys.rsshubEnvSnippet,
+    queryFn: () => http.get<RsshubEnvSnippet>('/api/integrations/rsshub/env-snippet'),
+    enabled,
   });
 }
 

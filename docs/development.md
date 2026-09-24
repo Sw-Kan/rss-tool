@@ -107,6 +107,8 @@ make typecheck  # tsc --noEmit
 - [ ] 切到 English 后点「Summary」→ 上游收到的 prompt 是英文（可用假上游打印请求体验证）
 - [ ] 登录页右上角胶囊在未登录状态下也能切换语言，并按浏览器语言给默认值
 - [ ] 设置 → 集成：填 RSSHub 服务地址 → 点卡片左侧的循环图标 → 显示「连接正常 · Nms」
+- [ ] 集成 → 加一个「传给 RSSHub」的参数（如 `PIXIV_REFRESH_TOKEN`）→ 下方出现 `-e PIXIV_REFRESH_TOKEN=…` 片段；加一个「拼到路由」的参数（如 `limit`，作用范围 `/pixiv`）→ 只有它出现在订阅地址上，凭据**不**出现（`sqlite3 … "select url from feeds"` 验）
+- [ ] 把片段贴进 `docker run -e …` 重建 RSSHub 容器 → 需要登录的路由（pixiv 等）能取到内容；不填则取不到 —— 改完 env 必须重建容器才生效
 - [ ] 集成里加一条路由参数（如 `limit` / `/twitter/user` / `20`），然后添加订阅时只填 `/twitter/user/xxx` → 库里存的地址已带上参数
 - [ ] 集成 → Obsidian 填绝对路径 → 自动化加一条「新文章到达 + 标题包含 X → 保存到 Obsidian」→ 刷新后仓库里出现 md 文件
 - [ ] 设置 → 代理：自定义模式填 `http://127.0.0.1:1` → 测试连接失败且提示指向 `host.docker.internal`；填正确地址（如宿主机代理）→ 成功并显示经由与延迟；切回系统代理 → 恢复

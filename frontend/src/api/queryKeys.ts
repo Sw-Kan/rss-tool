@@ -21,6 +21,7 @@ export const keys = {
   aiUsage: ['ai', 'usage'] as const,
   aiResults: (articleId: string) => ['ai', 'results', articleId] as const,
   integrations: ['integrations'] as const,
+  rsshubEnvSnippet: ['integrations', 'rsshub', 'env-snippet'] as const,
   proxy: ['proxy'] as const,
   rules: ['automation', 'rules'] as const,
 };

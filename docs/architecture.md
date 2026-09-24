@@ -100,6 +100,8 @@ readability-lxml 抽正文容器                 选它而非 trafilatura：需�
 - 上游失败**不写** `ai_results`，所以用户修好配置后可以直接重试；成功则永久缓存，重复点击不重复计费。
 - `ai_results` 同时是缓存与用量账本，`/api/ai/usage` 直接按月聚合这张表，不另开计数表。
 - AI 的 `base_url` 是用户自己填的配置，**不做内网拦截**；这与 feed 侧 URL 必须过 SSRF 校验是两回事。
+- 前端门闩 `aiReady` 只看「有没有一条 `enabled` 的供应商」，与源、条目类型无关：一条都没有时顶栏两个按钮保持灰色外观但**可点**，点一下走 `settings=ai` 深链直接打开「设置 → AI」（`disabled` 元素不派发鼠标事件，原生 `title` 就不会显示，所以这里不能用 `disabled`）。
+- 条目类型决定按钮**是否出现**：只有 `article` 有 AI（`pages.md` 明确 video/picture 不需要）。
 
 ## 国际化（F7）
 

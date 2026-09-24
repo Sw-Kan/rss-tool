@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import TurndownService from 'turndown';
 
 import {
@@ -51,6 +52,7 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
   const setState = useSetItemState();
   const bulkRead = useBulkRead();
 
+  const [params, setParams] = useSearchParams();
   const scroller = useRef<HTMLDivElement | null>(null);
   const [readWords, setReadWords] = useState(0);
   const [flash, setFlash] = useState<string | null>(null);
@@ -60,7 +62,15 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
   const aiResults = useAiResults(itemId);
   const generateAi = useGenerateAi();
 
+  // 门闩只由「有没有 enabled 的供应商」决定，与源和条目类型无关
   const aiReady = (aiConfig.data?.providers ?? []).some((provider) => provider.enabled);
+  const aiTitle = aiReady ? undefined : t.ai.needProvider;
+  // 没配供应商时按钮不生成，而是走现有 settings 深链直接打开「设置 → AI」
+  const openAiSettings = () => {
+    const next = new URLSearchParams(params);
+    next.set('settings', 'ai');
+    setParams(next);
+  };
   const summary = aiResults.data?.summary ?? null;
   const translatedTitle = aiResults.data?.title_translation ?? null;
 
@@ -178,13 +188,17 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
         <div className="flex shrink-0 items-center gap-1">
           {isEssay ? (
             <>
+              {/* 没有供应商时保持灰色外观但**可点**：disabled 元素不派发鼠标事件，原生 title 就不会显示 */}
               <AiButton
                 label={t.ai.summarize}
                 icon={<Sparkles size={14} />}
                 active={Boolean(summary)}
                 busy={generateAi.isPending && generateAi.variables?.kind === 'summary'}
-                disabled={!aiReady || generateAi.isPending}
+                muted={!aiReady}
+                title={aiTitle}
+                disabled={aiReady ? generateAi.isPending : false}
                 onClick={() => {
+                  if (!aiReady) return openAiSettings();
                   setSummaryOpen(true);
                   generateAi.mutate({ articleId: item.id, kind: 'summary' });
                 }}
@@ -194,8 +208,13 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
                 icon={<Languages size={14} />}
                 active={Boolean(translatedTitle)}
                 busy={generateAi.isPending && generateAi.variables?.kind === 'title_translation'}
-                disabled={!aiReady || generateAi.isPending}
-                onClick={() => generateAi.mutate({ articleId: item.id, kind: 'title_translation' })}
+                muted={!aiReady}
+                title={aiTitle}
+                disabled={aiReady ? generateAi.isPending : false}
+                onClick={() => {
+                  if (!aiReady) return openAiSettings();
+                  generateAi.mutate({ articleId: item.id, kind: 'title_translation' });
+                }}
               />
               <span className="mx-1 h-5 w-px bg-line" />
             </>
@@ -357,6 +376,8 @@ function AiButton({
   icon,
   active,
   busy,
+  muted,
+  title,
   disabled,
   onClick,
 }: {
@@ -364,16 +385,25 @@ function AiButton({
   icon: ReactNode;
   active: boolean;
   busy: boolean;
+  /** 灰色外观：还没有可用的供应商 */
+  muted: boolean;
+  title?: string;
   disabled: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
+      title={title}
       disabled={disabled}
       onClick={onClick}
+      // 三个外观互斥，靠三元分支而不是叠加 class（Tailwind 冲突类谁赢取决于 CSS 生成顺序）
       className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-        active ? 'bg-soft text-on-soft' : 'text-ink-2 hover:bg-subtle hover:text-ink'
+        active
+          ? 'bg-soft text-on-soft'
+          : muted
+            ? 'text-ink-3 opacity-60 hover:bg-subtle'
+            : 'text-ink-2 hover:bg-subtle hover:text-ink'
       }`}
     >
       {busy ? <Loader2 size={14} className="animate-spin" /> : icon}

@@ -376,6 +376,7 @@ export const zhCN = {
     translate: '标题翻译',
     summaryTitle: 'AI 总结',
     collapseSummary: '收起 AI 总结',
+    needProvider: '先在「设置 → AI」添加并启用一个供应商，再回来使用',
     firstProviderHint: '多个供应商同时开启时，使用列表里第一个。',
   },
 } as const;

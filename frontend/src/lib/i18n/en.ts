@@ -379,6 +379,7 @@ export const en: Strings = {
     translate: 'Translate title',
     summaryTitle: 'AI summary',
     collapseSummary: 'Collapse AI summary',
+    needProvider: 'Add and enable an AI provider in Settings → AI first',
     firstProviderHint: 'With several providers enabled, the first one in the list is used.',
   },
 };

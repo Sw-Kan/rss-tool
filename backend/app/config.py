@@ -42,6 +42,8 @@ class Settings(BaseSettings):
 
     # F1 AI 助手
     ai_timeout_seconds: float = 60.0
+    # 上游限流/临时故障时的退避重试间隔（秒）；每家用尽 2 次尝试
+    ai_retry_backoff_seconds: float = 3.0
 
     # F6 媒体缓存
     media_cache_enabled: bool = True

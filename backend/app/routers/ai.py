@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..db import session_scope
 from ..deps import CurrentUser, DbSession, SettingsRow
-from ..models import AiProvider, AiResult, Article, Subscription
+from ..models import AiProvider, AiResult, Article, Subscription, User
 from ..schemas import (
     AiArticleIn,
     AiConfigOut,
@@ -161,23 +165,107 @@ async def generate(
     settings: SettingsRow,
     kind: AiKind = Query(...),
 ) -> AiResultOut:
-    """生成（命中缓存则直接返回）。kind=summary 总结，kind=title_translation 标题翻译。"""
+    """生成（命中缓存则直接返回）。kind=summary 总结，kind=title_translation 标题翻译。
+
+    内部同样走流式上游，只是这里等它跑完再一次性返回，方便脚本与 curl 用；
+    浏览器端走 `/generate/stream`。
+    """
     _require_visible(db, user.id, payload.article_id)
     article = db.get(Article, payload.article_id)
     assert article is not None
 
     try:
-        row, cached = await ai.run(
-            db, user, article, kind, settings.ai_token_limit, settings.language
-        )
-    except ai.AiLimitError as exc:
-        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
-    except ai.AiConfigError as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        cached, providers = ai.prepare(db, user.id, article.id, kind, settings.ai_token_limit)
+        if cached is not None:
+            return _result_out(cached, cached=True)
+        async for event in ai.generate(db, user, article, kind, providers, settings.language):
+            if event.type == "done":
+                assert event.result is not None
+                return _result_out(event.result, cached=False)
     except ai.AiError as exc:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        raise _http_error(exc) from exc
 
-    return _result_out(row, cached=cached)
+    raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail="AI 接口没有返回结果")
+
+
+@router.post("/generate/stream", response_model=None)
+async def generate_stream(
+    payload: AiArticleIn,
+    user: CurrentUser,
+    db: DbSession,
+    settings: SettingsRow,
+    kind: AiKind = Query(...),
+) -> StreamingResponse:
+    """SSE 版：逐块把上游文本转给前端。
+
+    响应开始**前**的失败还是普通 HTTP 状态码（404 / 400 / 429）；
+    开始**后**的失败只能走 `event: error`（HTTP 200 已经发出去了）。
+    """
+    _require_visible(db, user.id, payload.article_id)
+    try:
+        cached, providers = ai.prepare(
+            db, user.id, payload.article_id, kind, settings.ai_token_limit
+        )
+    except ai.AiError as exc:
+        raise _http_error(exc) from exc
+
+    return StreamingResponse(
+        _stream_body(user.id, payload.article_id, kind, cached, providers, settings.language),
+        media_type="text/event-stream",
+        # X-Accel-Buffering：生产是 nginx 反代，不加会被它缓冲到流结束才吐给浏览器
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+async def _stream_body(
+    user_id: str,
+    article_id: str,
+    kind: str,
+    cached: AiResult | None,
+    providers: list[AiProvider],
+    language: str,
+) -> AsyncIterator[str]:
+    """流式响应体。
+
+    请求级 session 在响应开始前就被 FastAPI 关掉了（≥0.106 的依赖退出时机），
+    所以这里自己开一个 session —— 与调度器、后台任务同样的做法。
+    """
+    if cached is not None:
+        yield ai.sse_frame("done", _result_out(cached, cached=True).model_dump(mode="json"))
+        return
+
+    with session_scope() as db:
+        user = db.get(User, user_id)
+        article = db.get(Article, article_id)
+        if user is None or article is None:
+            yield ai.sse_frame("error", {"detail": "文章不存在"})
+            return
+        try:
+            async for event in ai.generate(db, user, article, kind, providers, language):
+                if event.type == "meta":
+                    yield ai.sse_frame(
+                        "meta",
+                        {
+                            "provider": event.provider,
+                            "model": event.model,
+                            "attempt": event.attempt,
+                        },
+                    )
+                elif event.type == "delta":
+                    yield ai.sse_frame("delta", {"text": event.text})
+                elif event.type == "done" and event.result is not None:
+                    payload = _result_out(event.result, cached=False).model_dump(mode="json")
+                    yield ai.sse_frame("done", payload)
+        except ai.AiError as exc:
+            yield ai.sse_frame("error", {"detail": str(exc)})
+
+
+def _http_error(exc: ai.AiError) -> HTTPException:
+    if isinstance(exc, ai.AiLimitError):
+        return HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc))
+    if isinstance(exc, ai.AiConfigError):
+        return HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc))
 
 
 def _result_out(row: AiResult, *, cached: bool = True) -> AiResultOut:

@@ -62,6 +62,7 @@ make db-reset       # 删除 rss.db 与 uploads/，下次启动重建
 | 看服务器时区 | `docker compose exec backend date`；定时规则的 HH:MM 按它解释 |
 | 看定时规则是否在跑 | 后端日志 `scheduler: 定时规则 tick 已注册；当前服务器时间 …` |
 | 不花钱验证 AI 链路 | 起个假上游（见下），供应商填 `http://127.0.0.1:8977/v1` |
+| 看 AI 是不是真流式 | 假上游一字符一帧，字会往外蹦；DevTools → Network → `generate/stream` 的响应是 EventStream |
 | 看 AI 用量 | `sqlite3 backend/data/rss.db "select kind,sum(tokens_in+tokens_out) from ai_results group by 1"` |
 
 ## 测试
@@ -97,7 +98,8 @@ make typecheck  # tsc --noEmit
 - [ ] 导出我的数据（JSON）可被 `jq` 解析且含已读/收藏记录
 - [ ] 设置 → AI：添加供应商、填地址/Key/模型、关掉开关后「AI 总结」按钮变灰
 - [ ] 全新实例（一条 AI 供应商都没有）：顶栏两个 AI 按钮为灰、悬停显示原因，点一下直接打开「设置 → AI」
-- [ ] 阅读一篇文章点「AI 总结」出结果；再点一次不再产生上游请求（库里 `ai_results` 只有一行）
+- [ ] 阅读一篇文章点「AI 总结」→ **逐字**长出来（不是一次性出现）；再点一次不再产生上游请求（库里 `ai_results` 只有一行）
+- [ ] 把第一家供应商的地址指到一个必错的上游（或假上游开 `RATE_LIMIT`）→ 自动重试一次、再切到第二家，最终能出结果；全部失败时红字是中文说明 + 上游原文截断，且正文上方不留半截总结
 - [ ] 「标题翻译」显示在原文标题下方；刷新页面后两者都还在（走 `/api/ai/results` 回填）
 - [ ] 把 API Key 改错 → 提示上游 401；改回正确后可以直接重试成功（失败不写库）
 - [ ] 把上限设成比当前用量小的值 → 下一次生成提示已达上限，可命中缓存的仍能打开
@@ -133,23 +135,45 @@ make typecheck  # tsc --noEmit
 
 ```bash
 python3 - <<'EOF' &
-import json
+import json, time
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+TEXT = "一句话总结。\n• 要点一\n• 要点二"
+# 改成 True 就一律回 429（OpenAI 兼容错误体），用来验「重试 + 切下一家供应商」
+RATE_LIMIT = False
+
 class H(BaseHTTPRequestHandler):
     def do_POST(self):
-        body = json.loads(self.rfile.read(int(self.headers["content-length"])) or b"{}")
-        out = {"choices": [{"message": {"content": "一句话总结。\n• 要点一"}}],
-               "usage": {"prompt_tokens": 100, "completion_tokens": 20}}
-        raw = json.dumps(out).encode()
-        self.send_response(200); self.send_header("content-type", "application/json")
-        self.send_header("content-length", str(len(raw))); self.end_headers(); self.wfile.write(raw)
+        self.rfile.read(int(self.headers.get("content-length") or 0))
+        if RATE_LIMIT:
+            raw = json.dumps({"error": {"message": "All available accounts are currently rate-limited."}}).encode()
+            self.send_response(429)
+        else:
+            raw = b""
+            self.send_response(200)
+        # 关键：响应必须是 SSE（rss-tool 一律用 stream:true 调上游）
+        self.send_header("content-type", "text/event-stream")
+        self.end_headers()
+        if RATE_LIMIT:
+            self.wfile.write(raw)
+            return
+        for piece in TEXT:  # 一个字符一帧，肉眼就能看出是流式
+            frame = {"choices": [{"delta": {"content": piece}}]}
+            self.wfile.write(f"data: {json.dumps(frame)}\n\n".encode())
+            self.wfile.flush()
+            time.sleep(0.02)
+        usage = {"choices": [], "usage": {"prompt_tokens": 100, "completion_tokens": 20}}
+        self.wfile.write(f"data: {json.dumps(usage)}\n\ndata: [DONE]\n\n".encode())
+        self.wfile.flush()
     def log_message(self, *a): pass
+
 HTTPServer(("127.0.0.1", 8977), H).serve_forever()
 EOF
 ```
 
 然后「设置 → AI → 添加供应商 → 自定义」，地址填 `http://127.0.0.1:8977/v1`，模型随便填，
-Key 留空即可（空 key 不发鉴权头）。
+Key 留空即可（空 key 不发鉴权头）。想看失败切换就再起一个（端口改成 8978、`RATE_LIMIT = True`）
+并加为第二个供应商：点「AI 总结」应该先重试第一家、再切到能工作的那家。
 
 ## 提交
 

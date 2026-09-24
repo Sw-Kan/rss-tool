@@ -149,7 +149,8 @@ type SettingsOut = { theme: 'light'|'dark'; language: 'zh-CN'|'en';
 | DELETE | `/api/ai/providers/{id}` | 204 |
 | GET | `/api/ai/usage` | `{month_tokens, total_tokens, limit, calls, by_kind}` |
 | GET | `/api/ai/results?article_id=` | `{summary: AiResultOut\|null, title_translation: AiResultOut\|null}`，只读缓存 |
-| POST | `/api/ai/generate?kind=` | `kind=summary\|title_translation`，body `{article_id}` |
+| POST | `/api/ai/generate?kind=` | `kind=summary\|title_translation`，body `{article_id}` → `AiResultOut`。一次性 JSON，给脚本/curl 用 |
+| POST | `/api/ai/generate/stream?kind=` | 同上参数，`text/event-stream`。**前端用这个** |
 
 ```ts
 type AiProviderOut = { id, label, protocol: 'openai'|'anthropic', base_url, model,
@@ -157,11 +158,22 @@ type AiProviderOut = { id, label, protocol: 'openai'|'anthropic', base_url, mode
 type AiResultOut  = { kind, content, model, cached: boolean, tokens_in, tokens_out, created_at }
 ```
 
+`/api/ai/generate/stream` 的事件（每帧 `event:` + 单行 `data:` JSON）：
+
+| 事件 | data | 说明 |
+|---|---|---|
+| `meta` | `{provider, model, attempt}` | 每次上游尝试开头都会发一次；重试/切换时能看到 |
+| `delta` | `{text}` | 文本增量，直接往已收到的内容后面接 |
+| `done` | `AiResultOut` | 结果已入库（命中缓存时只有这一个事件） |
+| `error` | `{detail}` | 失败原因（中文，附上游原文截断） |
+
 约定：
 
 - `api_key` **永不回传**，只给 `api_key_hint`（如 `sk-••••••••cdef`）。PATCH 时空字符串 = 不改，`clear_key: true` 才清空。
-- `generate` 命中缓存直接返回 `cached: true`，不再调上游。
-- 错误码：未配置/配置非法 → **400**；上游 HTTP 错误、超时、响应不可解析 → **502**；本月用量超 `token_limit` → **429**。
+- 两个 generate 端点都命中缓存就直接给 `cached: true`，不再调上游（即使已超本月上限也照常返回）。
+- 上游一律用 `stream: true` 调用，并按 `position` 依次尝试所有**启用**的供应商：每家用尽 2 次尝试（中间退避 `AI_RETRY_BACKOFF_SECONDS`），**只在本次请求还没吐出任何字符时**才重试/切换。
+- 错误码（JSON 端点，以及流式端点**响应开始前**失败时）：未配置/配置非法 → **400**；上游 HTTP 错误、超时、响应不可解析、所有供应商都失败 → **502**；本月用量超 `token_limit` → **429**。
+  流式端点**响应开始后**的失败只能是 `event: error`（HTTP 200 已经发出去），前端把 `detail` 当错误文案显示。
 - `token_limit` 通过 `PATCH /api/settings {ai_token_limit}` 修改，0 = 不限。
 
 ## 集成 — M14

@@ -12,6 +12,8 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_TMP}/test.db"
 os.environ["SECRET_KEY"] = "test-secret-key-" + "a" * 32
 os.environ["ALLOW_PRIVATE_FETCH"] = "false"
 os.environ["REFRESH_DEFAULT_MINUTES"] = "60"
+# 重试退避在测试里没意义，设 0 免得每条重试用例白等 3 秒
+os.environ["AI_RETRY_BACKOFF_SECONDS"] = "0"
 
 from collections.abc import Iterator  # noqa: E402
 

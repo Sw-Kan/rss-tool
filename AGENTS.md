@@ -167,8 +167,8 @@ make lint && make typecheck && make test
 - 抽取失败（含超时）会写 `extracted_at` 且不再重试，避免每轮刷新反复撞同一个坏页面；要强制重试只能删库重建。
 - 侧边栏顶部的搜索图标只做**本地过滤**（对已加载的目录名与源名做子串匹配），不发请求、不搜文章正文。
 - 外链图片可能因防盗链加载失败，以占位图兜底。
-- AI：`api_key` 明文存 SQLite（本地单实例、库本身未加密，额外加密只是摆设）；不做流式输出；上游失败不写 `ai_results`，也不自动重试（用户点一次就调一次）；上游未返回 usage 时 token 记 0。
-- AI：多个供应商同时开启时只用列表里第一个（按 `position`）。
+- AI：`api_key` 明文存 SQLite（本地单实例、库本身未加密，额外加密只是摆设）；**流式输出**（SSE，`POST /api/ai/generate/stream`，`/api/ai/generate` 保留为一次性 JSON 给脚本用）；上游失败不写 `ai_results`，也不写半成品；上游未返回 usage 时 token 记 0。
+- AI：按 `position` 依次尝试所有**启用**的供应商，每家用尽 2 次尝试（退避 `AI_RETRY_BACKOFF_SECONDS`）；可重试的是 429 / 5xx / 网络 / 超时，4xx（除 429）不重试；**只有本次请求还没吐出任何字符时**才重试/切换（已流出的字接不上另一家的输出），全失败才报错。
 - AI：与源、条目类型无关 —— 只要有一条启用的供应商，任何 `article` 条目都能总结／翻译；一条都没有时顶栏两个按钮保持灰色外观但可点，直接跳到「设置 → AI」。
 - 界面语言只有 `zh-CN` / `en` 两种；不引入 i18n 库（几百条文案用不上 ICU 复数规则），日期与数字走 `Intl`。
 - 语言来源：登录前用 localStorage / 浏览器语言，登录后以 `user_settings.language` 为准；切换语言时 `document.documentElement.lang` 同步更新。

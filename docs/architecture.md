@@ -81,23 +81,34 @@ readability-lxml 抽正文容器                 选它而非 trafilatura：需�
 
 ```
 前端：设置 → AI                          前端：阅读器顶栏「AI 总结」「标题翻译」
-  GET/POST/PATCH/DELETE /api/ai/providers     POST /api/ai/generate?kind=summary|title_translation
-  PATCH /api/settings {ai_token_limit}        GET  /api/ai/results?article_id=   (打开文章回填)
-  GET /api/ai/usage                           ▼
-                                       ai.run()
-                                         ├─ 命中 ai_results → 直接返回，不再调上游
-                                         ├─ 本月用量 >= 上限 → 429
-                                         ├─ pick_provider()  第一条 enabled（按 position）
-                                         └─ complete()       httpx POST 上游，写 ai_results
+  GET/POST/PATCH/DELETE /api/ai/providers     POST /api/ai/generate/stream?kind=…  (SSE，前端用)
+  PATCH /api/settings {ai_token_limit}        POST /api/ai/generate?kind=…         (一次性 JSON，脚本用)
+  GET /api/ai/usage                           GET  /api/ai/results?article_id=     (打开文章回填)
+                                              ▼
+                                     ai.prepare()  预检：命中缓存 / 上限 / 有没有供应商
+                                       ├─ 命中 ai_results → done(cached)
+                                       ├─ 本月用量 >= 上限 → 429（响应开始前，还来得及用状态码）
+                                       └─ enabled_providers()  按 position 全部取出
+                                              ▼
+                                     ai.generate()  逐家尝试，每家最多 2 次
+                                       ├─ meta   → 开始一次尝试（provider/model/attempt）
+                                       ├─ delta  → 上游 stream:true 的文本增量
+                                       ├─ done   → 写 ai_results（缓存兼账本）
+                                       └─ error  → 全失败 / 中途断流
 ```
 
-两套报文：`openai`（`{base_url}/chat/completions` + Bearer）与 `anthropic`（`{base_url}/messages` + `x-api-key`）。
+两套报文（都带 `stream: true`）：`openai`（`{base_url}/chat/completions` + Bearer，额外带 `stream_options.include_usage`）与 `anthropic`（`{base_url}/messages` + `x-api-key`）。
 协议藏在 `ai_providers.protocol` 里由预设决定，UI 不暴露——需要别的协议就用「自定义」预设。
 
 关键性质：
 
+- **流式**：上游 `stream: true`，逐块转成 SSE 发给前端；前端把增量写进 `aiResults` 这份 query 缓存，所以 `ArticlePane` 不需要知道自己在看的是流式的一半还是最终结果。生产是 nginx 反代，响应头必须带 `X-Accel-Buffering: no`，否则会被缓冲到流结束才吐出来。
+- **慢但一直在吐字不会被判超时**：httpx 在流式下是分块读超时（`AI_TIMEOUT_SECONDS`），只有完全卡住才算超时。
+- **重试与切换**：可重试的是 429 / 5xx / 网络 / 超时；4xx（除 429）不重试（配置或上游本身的毛病，重试无意义）。按 `position` 依次尝试所有启用的供应商，每家用尽 `ATTEMPTS_PER_PROVIDER`（2）次，中间退避 `AI_RETRY_BACKOFF_SECONDS`。上游 200 却一句话都不给时也换下一家。
+- **已吐字就不再重试/切换**：流出去的字收不回来，接上另一家的输出会拼出两段内容。此时报「已生成的内容未保存」。
+
 - `api_key` 明文落库（本地单实例、库未加密，再包一层是摆设），但**永不回传**，接口只给 `sk-••••••••cdef` 掩码；空 key 时干脆不发鉴权头（本地 Ollama 的用法）。
-- 上游失败**不写** `ai_results`，所以用户修好配置后可以直接重试；成功则永久缓存，重复点击不重复计费。
+- 上游失败**不写** `ai_results`（也不写半成品），所以用户修好配置后可以直接重试；成功则永久缓存，重复点击不重复计费。
 - `ai_results` 同时是缓存与用量账本，`/api/ai/usage` 直接按月聚合这张表，不另开计数表。
 - AI 的 `base_url` 是用户自己填的配置，**不做内网拦截**；这与 feed 侧 URL 必须过 SSRF 校验是两回事。
 - 前端门闩 `aiReady` 只看「有没有一条 `enabled` 的供应商」，与源、条目类型无关：一条都没有时顶栏两个按钮保持灰色外观但**可点**，点一下走 `settings=ai` 深链直接打开「设置 → AI」（`disabled` 元素不派发鼠标事件，原生 `title` 就不会显示，所以这里不能用 `disabled`）。

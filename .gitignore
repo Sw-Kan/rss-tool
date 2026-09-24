@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# 本地数据（数据库与上传文件）
+backend/data/
+
+# Node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# 环境
+.env
+.env.local
+frontend/.env.local
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/

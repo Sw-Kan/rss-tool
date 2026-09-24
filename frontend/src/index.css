@@ -1,0 +1,172 @@
+@import 'tailwindcss';
+@import './styles/tokens.css';
+
+/* 把设计令牌注册成 Tailwind 语义类：bg-surface / text-ink / border-line …
+   用 inline 让生成的工具类引用 CSS 变量本身，从而跟随 [data-theme] 切换。 */
+@theme inline {
+  --color-page: var(--bg-page);
+  --color-surface: var(--bg-surface);
+  --color-subtle: var(--bg-subtle);
+  --color-soft: var(--bg-soft);
+  --color-strong: var(--bg-strong);
+
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-on-soft: var(--on-soft);
+  --color-on-strong: var(--on-strong);
+
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-ink: var(--brand-ink);
+
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-ink: var(--danger-ink);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-ink: var(--success-ink);
+  --color-neutral-soft: var(--neutral-soft);
+  --color-neutral-ink: var(--neutral-ink);
+
+  --font-sans:
+    'Noto Sans SC', system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+
+  /* 设计稿使用的字号档位（覆盖 Tailwind 默认同名档位） */
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 14.5px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 22px;
+  --text-3xl: 26px;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg-page);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* 正文渲染：只作用于文章内容，不影响应用自身样式 */
+  .article-body {
+    font-size: var(--article-font-size, 14.5px);
+    line-height: 1.9;
+    color: var(--ink);
+    word-break: break-word;
+  }
+  .article-body p,
+  .article-body ul,
+  .article-body ol,
+  .article-body blockquote,
+  .article-body pre,
+  .article-body figure {
+    margin: 0 0 1.6em;
+  }
+  .article-body h1,
+  .article-body h2,
+  .article-body h3 {
+    margin: 2em 0 0.8em;
+    line-height: 1.4;
+  }
+  .article-body h1 {
+    font-size: 22px;
+  }
+  .article-body h2 {
+    font-size: 18px;
+  }
+  .article-body h3 {
+    font-size: 16px;
+  }
+  .article-body a {
+    color: var(--brand-ink);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .article-body img,
+  .article-body video {
+    max-width: 100%;
+    height: auto;
+    border-radius: 10px;
+  }
+  .article-body blockquote {
+    border-left: 3px solid var(--line-strong);
+    padding-left: 16px;
+    color: var(--ink-2);
+  }
+  .article-body pre {
+    background: var(--bg-subtle);
+    padding: 14px 16px;
+    border-radius: 10px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .article-body code {
+    font-size: 0.92em;
+  }
+  .article-body table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .article-body td,
+  .article-body th {
+    border: 1px solid var(--line);
+    padding: 6px 10px;
+  }
+  .article-body hr {
+    border: none;
+    border-top: 1px solid var(--line);
+    margin: 2.4em 0;
+  }
+}
+
+/* 打印视图（导出 PDF 用 window.print()） */
+@media print {
+  body {
+    background: #fff;
+    color: #000;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .article-body {
+    max-width: none !important;
+  }
+}

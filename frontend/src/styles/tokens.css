@@ -1,0 +1,113 @@
+/* 设计令牌。取值来自 Penpot 设计稿 rss-tool-design，见 docs/design-system.md。
+   组件只引用这里的变量 / Tailwind 语义类，不写裸 hex。 */
+
+:root,
+[data-theme='light'] {
+  --bg-page: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f1f5f9;
+  --bg-soft: #eef2ff;
+  --bg-strong: #111827;
+
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+
+  --ink: #111827;
+  --ink-2: #64748b;
+  --ink-3: #94a3b8;
+  --on-soft: #312e81;
+  --on-strong: #ffffff;
+
+  --brand: #4f46e5;
+  --brand-hover: #4338ca;
+  --brand-ink: #4f46e5;
+  --brand-ring: rgba(79, 70, 229, 0.35);
+
+  --danger: #ef4444;
+  --danger-soft: #fee2e2;
+  --danger-ink: #b91c1c;
+  --success: #10b981;
+  --success-soft: #d1fae5;
+  --success-ink: #047857;
+  --neutral-soft: #f1f5f9;
+  --neutral-ink: #64748b;
+
+  --overlay: rgba(15, 23, 42, 0.55);
+  --shadow-card: 0 20px 45px -20px rgba(15, 23, 42, 0.28);
+  --shadow-pop: 0 12px 32px -12px rgba(15, 23, 42, 0.28);
+}
+
+[data-theme='dark'] {
+  --bg-page: #1e293b;
+  --bg-surface: #1e293b;
+  --bg-subtle: #334155;
+  --bg-soft: #312e81;
+  --bg-strong: #0f172a;
+
+  --line: #334155;
+  --line-strong: #475569;
+
+  --ink: #f1f5f9;
+  --ink-2: #cbd5e1;
+  --ink-3: #94a3b8;
+  --on-soft: #818cf8;
+  --on-strong: #ffffff;
+
+  --brand: #6366f1;
+  --brand-hover: #4f46e5;
+  --brand-ink: #818cf8;
+  --brand-ring: rgba(129, 140, 248, 0.4);
+
+  --danger: #f87171;
+  --danger-soft: #4c1d24;
+  --danger-ink: #fca5a5;
+  --success: #34d399;
+  --success-soft: #0f3d33;
+  --success-ink: #6ee7b7;
+  --neutral-soft: #334155;
+  --neutral-ink: #cbd5e1;
+
+  --overlay: rgba(2, 6, 23, 0.7);
+  --shadow-card: 0 20px 45px -20px rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+}
+
+/* 源 logo / 图片占位底色，8 色循环（设计稿 palette） */
+:root {
+  --swatch-0: #eef2ff;
+  --swatch-0-ink: #4f46e5;
+  --swatch-1: #dbeafe;
+  --swatch-1-ink: #0ea5e9;
+  --swatch-2: #cffafe;
+  --swatch-2-ink: #06b6d4;
+  --swatch-3: #d1fae5;
+  --swatch-3-ink: #10b981;
+  --swatch-4: #fef3c7;
+  --swatch-4-ink: #f59e0b;
+  --swatch-5: #ffe4e6;
+  --swatch-5-ink: #ef4444;
+  --swatch-6: #fce7f3;
+  --swatch-6-ink: #ec4899;
+  --swatch-7: #ede9fe;
+  --swatch-7-ink: #8b5cf6;
+
+  /* 正文字号档位，由 <html data-textstyle> 切换 */
+  --article-font-size: 14.5px;
+
+  /* 头像可选 5 色 */
+  --avatar-0: #4f46e5;
+  --avatar-1: #0ea5e9;
+  --avatar-2: #10b981;
+  --avatar-3: #f59e0b;
+  --avatar-4: #ec4899;
+}
+
+[data-textstyle='small'] {
+  --article-font-size: 13.5px;
+}
+[data-textstyle='comfortable'] {
+  --article-font-size: 14.5px;
+}
+[data-textstyle='large'] {
+  --article-font-size: 16px;
+}

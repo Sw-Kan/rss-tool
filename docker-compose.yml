@@ -1,0 +1,32 @@
+services:
+  backend:
+    build: ./backend
+    environment:
+      # 留空则由后端在 /data/secret.key 里生成一次并持久化
+      SECRET_KEY: ${SECRET_KEY:-}
+      DATA_DIR: /data
+      DATABASE_URL: sqlite:////data/rss.db
+      CORS_ORIGINS: http://localhost:5173,http://localhost:8080
+      REFRESH_DEFAULT_MINUTES: ${REFRESH_DEFAULT_MINUTES:-60}
+      # 自建 RSSHub / 局域网 feed 需要打开（会放宽 SSRF 防护）
+      ALLOW_PRIVATE_FETCH: ${ALLOW_PRIVATE_FETCH:-false}
+    volumes:
+      - rss-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  rss-data:

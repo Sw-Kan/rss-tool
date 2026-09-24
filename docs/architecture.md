@@ -214,6 +214,9 @@ resolveMediaUrl(src, article.url)          GET /api/media?url=<encoded>
 - `favorites` 不是一级入口：它切的是二级的 `fav`，点一次进入、再点一次取消，
   进入时清掉 `folder`。高亮上「收藏」与当前类型行会**同时亮着**，因为两者是叠加的。
 - `folder=ungrouped` 映射为后端的 `folder_id=none`。
+- 互斥这条不变式在 `parseSearch` 里也收口：URL 同时带 `fav` 与 `folder`/`feed` 时**丢掉 `fav`**
+  （目录/源优先，与 `viewTitle` 的优先级一致）。旧书签与改造前的浏览器历史正长这样，
+  只靠点按函数保证的话，按一次后退就能重现「目录里的收藏」。
 - 形态选择：`kind` 为 picture → 瀑布流，video → 网格，其余（含 all / favorites / 混合目录）→ 左列表右正文。
 - 设置弹窗用 `settings=<tab>` 深链，不单独建路由。
 

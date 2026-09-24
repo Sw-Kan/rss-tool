@@ -36,11 +36,15 @@ function clean(value: string | null | undefined): string | null {
 export function parseSearch(params: URLSearchParams): ReaderSearch {
   const kind = params.get('kind');
   const state = params.get('state');
+  const folder = clean(params.get('folder'));
+  const feed = clean(params.get('feed'));
   return {
     kind: KINDS.includes(kind as ItemKind) ? (kind as ItemKind) : null,
-    fav: params.get('fav') === '1',
-    folder: clean(params.get('folder')),
-    feed: clean(params.get('feed')),
+    // 收藏与目录同级互斥。URL 可能来自旧书签或改造前的浏览器历史（那时两者是 AND），
+    // 所以这里收口：同时出现时目录/源优先，容器比过滤器更具体。
+    fav: params.get('fav') === '1' && !folder && !feed,
+    folder,
+    feed,
     state: STATES.includes(state as ReadState) ? (state as ReadState) : 'all',
     item: clean(params.get('item')),
   };

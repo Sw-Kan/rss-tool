@@ -18,12 +18,24 @@ import {
 } from './scope';
 
 describe('parseSearch / toSearchParams', () => {
-  it('round-trips a fully specified search', () => {
+  it('round-trips a folder + feed search', () => {
+    const search: ReaderSearch = {
+      kind: 'video',
+      fav: false,
+      folder: 'f1',
+      feed: 'n1',
+      state: 'unread',
+      item: 'a1',
+    };
+    expect(parseSearch(toSearchParams(search))).toEqual(search);
+  });
+
+  it('round-trips a favorites search（收藏在二级，不带目录/源）', () => {
     const search: ReaderSearch = {
       kind: 'video',
       fav: true,
-      folder: 'f1',
-      feed: 'n1',
+      folder: null,
+      feed: null,
       state: 'unread',
       item: 'a1',
     };
@@ -43,6 +55,27 @@ describe('parseSearch / toSearchParams', () => {
     const parsed = parseSearch(new URLSearchParams('folder=%20%20&item='));
     expect(parsed.folder).toBeNull();
     expect(parsed.item).toBeNull();
+  });
+
+  it('drops fav when a folder is present（旧书签 / 后退不能重现目录里的收藏）', () => {
+    const parsed = parseSearch(new URLSearchParams('kind=picture&fav=1&folder=tech'));
+    expect(parsed).toMatchObject({ kind: 'picture', fav: false, folder: 'tech' });
+    expect(apiParams(parsed)).toEqual({ kind: 'picture', folder_id: 'tech' });
+  });
+
+  it('drops fav when a feed is present', () => {
+    expect(parseSearch(new URLSearchParams('fav=1&feed=sspai'))).toMatchObject({
+      fav: false,
+      feed: 'sspai',
+    });
+  });
+
+  it('keeps fav on its own', () => {
+    expect(parseSearch(new URLSearchParams('fav=1'))).toMatchObject({
+      fav: true,
+      folder: null,
+      feed: null,
+    });
   });
 });
 

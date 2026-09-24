@@ -1,6 +1,9 @@
 services:
   backend:
     build: ./backend
+    # Linux 原生 Docker 不会自动提供 host.docker.internal；没有它，代理/宿主机服务填不上地址
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       # 留空则由后端在 /data/secret.key 里生成一次并持久化
       SECRET_KEY: ${SECRET_KEY:-}

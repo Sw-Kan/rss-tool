@@ -225,6 +225,10 @@ type RuleOut = { id, name, enabled, position,
 `mode` 只有 `system` / `custom`。自定义模式下按目标协议挑地址：http → `http_url`，
 https → `https_url`，两者都为空时用 `socks5_url` 兜底。
 
+后端跑在 Docker 里，容器内的 `127.0.0.1` 是容器自己：宿主机上的代理要填
+`http://host.docker.internal:<端口>`（compose 已给 backend 配 `extra_hosts`），
+且代理客户端需开「允许局域网连接」。填了回环地址又连不上时，测试连接会直接把这句话告诉用户。
+
 ## 媒体缓存 — M17
 
 | 方法 | 路径 | 说明 |

@@ -258,6 +258,8 @@ export const zhCN = {
     noProxyHint: '逗号分隔，匹配的域名不走代理',
     urlPlaceholder: 'http://ip:port',
     socksPlaceholder: 'socks5://ip:port',
+    dockerHint:
+      '后端跑在 Docker 里：容器内的 127.0.0.1 是容器自己，不是宿主机。宿主机上的代理请填 http://host.docker.internal:<端口>，并在代理客户端打开「允许局域网连接」。',
     test: '测试连接',
     testing: '测试中…',
     hint: '修改代理配置后，需要重新刷新订阅源才能生效；「测试连接」会真实发一次请求。',

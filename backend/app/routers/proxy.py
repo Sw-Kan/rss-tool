@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter
@@ -17,6 +19,31 @@ router = APIRouter(prefix="/api/proxy", tags=["proxy"])
 
 # 「测试连接」用的目标：小、全球 anycast、对我们的场景足够代表"能不能出网"
 PROBE_URL = "https://www.cloudflare.com/cdn-cgi/trace"
+
+# 容器内最常被填错的代理地址：这些名字在容器里指向容器自身，不是宿主机
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def in_container() -> bool:
+    """进程是否跑在容器里。参数化成模块函数便于测试替换。"""
+    return Path("/.dockerenv").exists()
+
+
+def _hint_for(exc: Exception, spec: proxy.ProxySpec, containerized: bool) -> str | None:
+    """连接失败时给出可行动的提示；不命中就返回 None，用原始报错。"""
+    if not containerized:
+        return None
+    urls = [spec.http_url, spec.https_url, spec.socks5_url]
+    hosts = {(urlparse(url).hostname or "").lower() for url in urls if url}
+    if not (hosts & LOOPBACK_HOSTS):
+        return None
+    if not isinstance(exc, httpx.ConnectError | httpx.TimeoutException):
+        return None
+    return (
+        "容器内的 127.0.0.1 / localhost 指向本容器而非宿主机；"
+        "宿主机上的代理请填 host.docker.internal:<端口>，"
+        "并在代理客户端开启「允许局域网连接」"
+    )
 
 
 def _row(db: DbSession) -> ProxyConfig:
@@ -86,9 +113,13 @@ async def test_proxy(user: CurrentUser, db: DbSession) -> IntegrationTestOut:
     try:
         async with proxy.build_client(spec, PROBE_URL, timeout=10.0) as client:
             response = await client.get(PROBE_URL)
-    except httpx.TimeoutException:
-        return IntegrationTestOut(ok=False, message="连接超时")
+    except httpx.TimeoutException as exc:
+        hint = _hint_for(exc, spec, in_container())
+        return IntegrationTestOut(ok=False, message=f"连接超时：{hint}" if hint else "连接超时")
     except httpx.HTTPError as exc:
+        hint = _hint_for(exc, spec, in_container())
+        if hint:
+            return IntegrationTestOut(ok=False, message=hint)
         return IntegrationTestOut(ok=False, message=f"连接失败：{exc}")
 
     latency = int((time.perf_counter() - started) * 1000)

@@ -261,6 +261,8 @@ export const en: Strings = {
     noProxyHint: 'Comma separated; matching hosts skip the proxy',
     urlPlaceholder: 'http://ip:port',
     socksPlaceholder: 'socks5://ip:port',
+    dockerHint:
+      'The backend runs in Docker: inside the container, 127.0.0.1 is the container itself, not your host. For a proxy on the host use http://host.docker.internal:<port> and enable “Allow LAN” in your proxy app.',
     test: 'Test connection',
     testing: 'Testing…',
     hint: 'Refresh your feeds after changing the proxy; “Test connection” really sends one request.',

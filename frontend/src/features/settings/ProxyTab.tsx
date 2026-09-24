@@ -111,6 +111,8 @@ export function ProxyTab() {
             ))}
           </div>
 
+          <p className="mt-3 text-2xs leading-relaxed text-ink-3">{t.proxy.dockerHint}</p>
+
           <div className="mt-4 flex items-center gap-3">
             <Button
               className="h-9 px-4 text-xs"

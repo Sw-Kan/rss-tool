@@ -294,6 +294,13 @@ describe('ProxyTab', () => {
     renderTab(<ProxyTab />);
     await waitFor(() => expect(screen.getByText('系统代理')).toBeTruthy());
     expect(screen.queryByLabelText('HTTP 代理')).toBeNull();
+    expect(screen.queryByText(/host.docker.internal/)).toBeNull();
+  });
+
+  it('tells the user how to reach a host proxy from the container', async () => {
+    renderTab(<ProxyTab />);
+    await waitFor(() => expect(screen.getByLabelText('HTTP 代理')).toBeTruthy());
+    expect(screen.getByText(/host\.docker\.internal/)).toBeTruthy();
   });
 
   it('patches the mode when switching', async () => {

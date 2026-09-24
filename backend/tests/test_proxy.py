@@ -218,6 +218,62 @@ def test_proxy_test_reports_upstream_error(auth_client: TestClient) -> None:
     assert "502" in body["message"]
 
 
+CONNECT_ERROR = httpx.ConnectError("[Errno 111] Connection refused")
+
+
+def test_proxy_test_names_the_host_when_loopback_fails_in_container(
+    auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """容器里填 127.0.0.1 是最常见错误，报错必须直接说出错在哪、该怎么办。"""
+    from app.routers import proxy as proxy_router
+
+    auth_client.patch("/api/proxy", json=CUSTOM)  # https_url 是 127.0.0.1
+    monkeypatch.setattr(proxy_router, "in_container", lambda: True)
+    with respx.mock:
+        respx.get("https://www.cloudflare.com/cdn-cgi/trace").mock(side_effect=CONNECT_ERROR)
+        body = auth_client.post("/api/proxy/test").json()
+
+    assert body["ok"] is False
+    assert "host.docker.internal" in body["message"]
+    assert "允许局域网" in body["message"]
+
+
+def test_proxy_test_keeps_the_plain_error_for_non_loopback_addresses(
+    auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """提示只给真正踩坑的人；填了正常地址失败时别拿长文案打扰。"""
+    from app.routers import proxy as proxy_router
+
+    auth_client.patch(
+        "/api/proxy",
+        json={"mode": "custom", "https_url": "http://10.9.9.9:7890", "no_proxy": ""},
+    )
+    monkeypatch.setattr(proxy_router, "in_container", lambda: True)
+    with respx.mock:
+        respx.get("https://www.cloudflare.com/cdn-cgi/trace").mock(side_effect=CONNECT_ERROR)
+        body = auth_client.post("/api/proxy/test").json()
+
+    assert body["ok"] is False
+    assert "host.docker.internal" not in body["message"]
+    assert "连接失败" in body["message"]
+
+
+def test_proxy_test_loopback_hint_needs_a_container(
+    auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """后端直接跑在宿主机上时（make dev），127.0.0.1 是对的，不该提示。"""
+    from app.routers import proxy as proxy_router
+
+    auth_client.patch("/api/proxy", json=CUSTOM)
+    monkeypatch.setattr(proxy_router, "in_container", lambda: False)
+    with respx.mock:
+        respx.get("https://www.cloudflare.com/cdn-cgi/trace").mock(side_effect=CONNECT_ERROR)
+        body = auth_client.post("/api/proxy/test").json()
+
+    assert body["ok"] is False
+    assert "host.docker.internal" not in body["message"]
+
+
 def test_proxy_test_message_names_the_bypass(auth_client: TestClient) -> None:
     auth_client.patch(
         "/api/proxy",

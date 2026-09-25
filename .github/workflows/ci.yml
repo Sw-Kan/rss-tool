@@ -1,0 +1,46 @@
+name: CI
+
+# 与 Makefile 的 DoD 对齐：lint + typecheck + test。后端测试全部用 respx 拦 HTTP，
+# 不打真实网络，所以 CI 里可以直接跑。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # uv 顺带负责装 Python（版本与 backend/Dockerfile 对齐）
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+          enable-cache: true
+      - run: make setup-backend
+      - run: make lint-backend test-backend
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 版本跟 frontend/package.json 的 packageManager 保持一致（仓库根没有 package.json，
+      # 所以这里必须显式给 version，不能让 action 自己去猜）
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: frontend
+      - run: make lint-frontend typecheck-frontend test-frontend

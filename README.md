@@ -1,5 +1,7 @@
 # rss-tool
 
+[![CI](https://github.com/Sw-Kan/rss-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/Sw-Kan/rss-tool/actions/workflows/ci.yml)
+
 自托管的 RSS 阅读器：**文章、图片、视频在同一个时间线里读，数据全在自己的机器上。**
 
 ![阅读器：文章模式](docs/images/reader-all.png)

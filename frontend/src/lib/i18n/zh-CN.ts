@@ -48,6 +48,7 @@ export const zhCN = {
     expandFolder: '展开目录',
     collapseFolder: '收起目录',
     rowActions: '目录操作',
+    dragHint: '长按拖动可移动到其它目录',
     rename: '重命名',
     deleteFolder: '删除目录',
     folderStats: (folders: number, ungrouped: number) =>

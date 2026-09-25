@@ -50,6 +50,7 @@ export const en: Strings = {
     expandFolder: 'Expand folder',
     collapseFolder: 'Collapse folder',
     rowActions: 'Folder actions',
+    dragHint: 'Press and hold to drag to another folder',
     rename: 'Rename',
     deleteFolder: 'Delete folder',
     folderStats: (folders: number, ungrouped: number) =>

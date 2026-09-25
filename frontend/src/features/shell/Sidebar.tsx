@@ -14,7 +14,7 @@ import {
   Trash2,
   Video,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 import {
   useCreateFolder,
@@ -23,11 +23,13 @@ import {
   useFolders,
   useRenameFolder,
   useSidebarSummary,
+  useUpdateFeed,
 } from '../../api/hooks';
 import { Avatar, SourceLogo } from '../../components/Avatar';
 import { IconButton } from '../../components/Button';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { SectionLabel, TextInput } from '../../components/Field';
+import { useLongPressDrag } from '../../hooks/useLongPressDrag';
 import { useReaderSearch } from '../../hooks/useReaderSearch';
 import { useT } from '../../lib/i18n';
 import { UNGROUPED, applyFeed, applyFolder, applyNav, activeNav } from '../../lib/scope';
@@ -67,6 +69,7 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
   const createFolder = useCreateFolder();
   const renameFolder = useRenameFolder();
   const deleteFolder = useDeleteFolder();
+  const { mutate: updateFeed } = useUpdateFeed();
 
   const counts = summary.data;
   const current = activeNav(search);
@@ -108,6 +111,22 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
   };
 
   const ungroupedFeeds = feedsByFolder.get(UNGROUPED) ?? [];
+  const allFeeds = feeds.data?.items ?? [];
+
+  /** 拖到目录行 / 未分组区块就改订阅的 folder_id（后端 PATCH 已支持，无前端新接口）。 */
+  const drag = useLongPressDrag({
+    onDrop: (feedId, target) => {
+      if (target === null) return;
+      const feed = allFeeds.find((item) => item.id === feedId);
+      if (!feed) return;
+      if (target === UNGROUPED) {
+        if (feed.folder_id !== null) updateFeed({ id: feedId, clearFolder: true });
+        return;
+      }
+      if (feed.folder_id !== target) updateFeed({ id: feedId, folderId: target });
+    },
+  });
+  const draggedFeed = allFeeds.find((feed) => feed.id === drag.draggingId) ?? null;
 
   return (
     <aside className="flex h-full flex-col bg-page">
@@ -205,9 +224,16 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
                         <ContextMenu.Root>
                           <ContextMenu.Trigger asChild>
                             <div
+                              data-drop={folder.id}
+                              onPointerEnter={() => drag.handleTargetEnter(folder.id)}
+                              onPointerLeave={() => drag.handleTargetLeave(folder.id)}
                               className={`flex h-[34px] items-center rounded-lg pr-1 ${
                                 selected ? 'bg-soft' : ''
-                              } hover:bg-subtle`}
+                              } ${
+                                drag.overId === folder.id
+                                  ? 'bg-soft ring-2 ring-brand'
+                                  : 'hover:bg-subtle'
+                              }`}
                             >
                               <IconButton
                                 label={isOpen ? t.nav.collapseFolder : t.nav.expandFolder}
@@ -275,27 +301,18 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
                               .filter((feed) => matches(feed.title))
                               .map((feed) => (
                                 <li key={feed.id}>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      update(applyFeed(feed.id, applyFolder(folder.id, search)))
-                                    }
-                                    className={`flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-left text-sm transition-colors ${
-                                      search.feed === feed.id
-                                        ? 'bg-soft text-on-soft'
-                                        : 'text-ink hover:bg-subtle'
-                                    }`}
-                                  >
-                                    <SourceLogo
-                                      name={feed.title}
-                                      iconUrl={feed.icon_url}
-                                      size={18}
-                                    />
-                                    <span className="min-w-0 flex-1 truncate">{feed.title}</span>
-                                    <span className="text-xs text-ink-3">
-                                      {counts?.feeds[feed.id] ?? 0}
-                                    </span>
-                                  </button>
+                                  <FeedItem
+                                    feed={feed}
+                                    count={counts?.feeds[feed.id] ?? 0}
+                                    selected={search.feed === feed.id}
+                                    dragging={drag.draggingId === feed.id}
+                                    className="px-2"
+                                    onDragStart={(event) => drag.handlePointerDown(feed.id, event)}
+                                    onSelect={() => {
+                                      if (drag.takeSwallowedClick()) return;
+                                      update(applyFeed(feed.id, applyFolder(folder.id, search)));
+                                    }}
+                                  />
                                 </li>
                               ))}
                           </ul>
@@ -309,31 +326,42 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
           <FolderMenu onNew={newFolder} />
         </ContextMenu.Root>
 
-        <div className="mt-4 mb-2">
-          <SectionLabel>{t.nav.ungrouped}</SectionLabel>
+        {/* 「未分组源」整块都是落点：把源从目录里拖出来就是放到这里 */}
+        <div
+          data-drop={UNGROUPED}
+          onPointerEnter={() => drag.handleTargetEnter(UNGROUPED)}
+          onPointerLeave={() => drag.handleTargetLeave(UNGROUPED)}
+          className={`mt-4 rounded-lg pb-1 ${
+            drag.overId === UNGROUPED ? 'bg-soft ring-2 ring-brand' : ''
+          }`}
+        >
+          <div className="mb-2">
+            <SectionLabel>{t.nav.ungrouped}</SectionLabel>
+          </div>
+          {ungroupedFeeds.length === 0 ? (
+            <p className="px-4 py-1 text-xs text-ink-3">{t.nav.noUngrouped}</p>
+          ) : null}
+          <ul className="space-y-0.5">
+            {ungroupedFeeds
+              .filter((feed) => matches(feed.title))
+              .map((feed) => (
+                <li key={feed.id}>
+                  <FeedItem
+                    feed={feed}
+                    count={counts?.feeds[feed.id] ?? 0}
+                    selected={search.feed === feed.id}
+                    dragging={drag.draggingId === feed.id}
+                    className="px-4"
+                    onDragStart={(event) => drag.handlePointerDown(feed.id, event)}
+                    onSelect={() => {
+                      if (drag.takeSwallowedClick()) return;
+                      update(applyFeed(feed.id, applyFolder(null, search)));
+                    }}
+                  />
+                </li>
+              ))}
+          </ul>
         </div>
-        {ungroupedFeeds.length === 0 ? (
-          <p className="px-4 py-1 text-xs text-ink-3">{t.nav.noUngrouped}</p>
-        ) : null}
-        <ul className="space-y-0.5">
-          {ungroupedFeeds
-            .filter((feed) => matches(feed.title))
-            .map((feed) => (
-              <li key={feed.id}>
-                <button
-                  type="button"
-                  onClick={() => update(applyFeed(feed.id, applyFolder(null, search)))}
-                  className={`flex h-8 w-full items-center gap-2.5 rounded-lg px-4 text-left text-sm transition-colors ${
-                    search.feed === feed.id ? 'bg-soft text-on-soft' : 'text-ink hover:bg-subtle'
-                  }`}
-                >
-                  <SourceLogo name={feed.title} iconUrl={feed.icon_url} size={18} />
-                  <span className="min-w-0 flex-1 truncate">{feed.title}</span>
-                  <span className="text-xs text-ink-3">{counts?.feeds[feed.id] ?? 0}</span>
-                </button>
-              </li>
-            ))}
-        </ul>
 
         <div className="mt-4 mb-1">
           <SectionLabel>{t.nav.stats}</SectionLabel>
@@ -366,6 +394,17 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
         </ProfileMenu>
       </footer>
 
+      {/* 拖影：跟着指针走的源行副本（fixed，不受侧边栏滚动裁剪） */}
+      {draggedFeed && drag.point ? (
+        <div
+          style={{ left: drag.point.x, top: drag.point.y }}
+          className="pointer-events-none fixed z-50 flex h-8 max-w-[240px] items-center gap-2.5 rounded-lg border border-line bg-surface px-2.5 text-sm text-ink shadow-[var(--shadow-pop)]"
+        >
+          <SourceLogo name={draggedFeed.title} iconUrl={draggedFeed.icon_url} size={18} />
+          <span className="min-w-0 flex-1 truncate">{draggedFeed.title}</span>
+        </div>
+      ) : null}
+
       <ConfirmDialog
         open={deleting !== null}
         onOpenChange={(open) => {
@@ -380,6 +419,43 @@ export function Sidebar({ user, search, onOpenSettings }: SidebarProps) {
         }}
       />
     </aside>
+  );
+}
+
+/** 源行：点击切源；鼠标长按可拖到别的目录（见 `useLongPressDrag`）。 */
+function FeedItem({
+  feed,
+  count,
+  selected,
+  dragging,
+  className,
+  onDragStart,
+  onSelect,
+}: {
+  feed: Feed;
+  count: number;
+  selected: boolean;
+  dragging: boolean;
+  className?: string;
+  onDragStart: (event: ReactPointerEvent) => void;
+  onSelect: () => void;
+}) {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      // 拖拽是隐藏手势，用原生 title 做一次发现性提示（文案走 i18n）
+      title={t.nav.dragHint}
+      onPointerDown={onDragStart}
+      onClick={onSelect}
+      className={`flex h-8 w-full items-center gap-2.5 rounded-lg text-left text-sm transition-colors ${className ?? ''} ${
+        selected ? 'bg-soft text-on-soft' : 'text-ink hover:bg-subtle'
+      } ${dragging ? 'cursor-grabbing opacity-50' : ''}`}
+    >
+      <SourceLogo name={feed.title} iconUrl={feed.icon_url} size={18} />
+      <span className="min-w-0 flex-1 truncate">{feed.title}</span>
+      <span className="text-xs text-ink-3">{count}</span>
+    </button>
   );
 }
 

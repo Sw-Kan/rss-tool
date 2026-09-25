@@ -4,6 +4,8 @@
 
 提取方式：Penpot MCP `execute_code` 遍历全部图形做去重统计 + `export_shape` 视觉核对。令牌落地在 `frontend/src/styles/tokens.css`。
 
+README 顶部的 5 张预览图也是从这份文件导出的（`Reader · 全部` / `Reader · 图片` / `Reader · 视频` / `Reader · 全部（深色）` / `Overlay · 设置 · AI`）。改完稿记得重新导出并覆盖 `docs/images/` 里的同名文件，别让图和稿子走散；以后拿到真机截图可直接替换这几个文件，README 不用改。
+
 ## 字体
 
 `Noto Sans SC`（唯一字体族），回退 `system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`。

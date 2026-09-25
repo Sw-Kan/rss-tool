@@ -2,6 +2,16 @@
 
 自托管的 RSS 阅读器：**文章、图片、视频在同一个时间线里读，数据全在自己的机器上。**
 
+![阅读器：文章模式](docs/images/reader-all.png)
+
+| 图片：六列瀑布流 | 视频：封面网格 |
+|---|---|
+| ![图片瀑布流](docs/images/reader-pictures.png) | ![视频网格](docs/images/reader-videos.png) |
+| **深色主题** | **设置：AI 供应商** |
+| ![深色主题](docs/images/reader-dark.png) | ![设置弹窗](docs/images/settings-ai.png) |
+
+*界面预览（源自 `docs/design-system.md` 的 Penpot 设计稿）*
+
 ## 它和别的阅读器差在哪
 
 现成的阅读器基本只认文章，图片和视频混在同一个列表里。rss-tool 按内容类型分成两种阅读形态：

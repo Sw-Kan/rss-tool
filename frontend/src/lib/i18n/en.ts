@@ -90,6 +90,8 @@ export const en: Strings = {
     prev: 'Previous',
     next: 'Next',
     openOriginal: 'Open original',
+    playVideo: 'Play video',
+    detail: 'Item details',
     pick: 'Pick an article on the left to start reading',
   },
 

@@ -16,6 +16,7 @@ interface PictureWallProps {
   subtitle: string;
   items: Item[];
   search: ReaderSearch;
+  onSelect: (id: string) => void;
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
@@ -29,6 +30,7 @@ export function PictureWall({
   subtitle,
   items,
   search,
+  onSelect,
   hasMore,
   loadingMore,
   onLoadMore,
@@ -89,33 +91,32 @@ export function PictureWall({
             <div key={columnIndex} className="flex flex-col" style={{ gap: GAP, flex: 1 }}>
               {column.map((item) => (
                 <figure key={item.id} className="min-w-0">
-                  {item.image_url ? (
-                    <RemoteImage
-                      src={item.image_url}
-                      alt={item.title}
-                      width={item.image_width}
-                      height={item.image_height}
-                      fallbackSeed={item.feed_title}
-                      className="rounded-lg"
-                    />
-                  ) : (
-                    <div className="flex aspect-[4/3] items-center justify-center rounded-lg bg-subtle text-xs text-ink-3">
-                      {t.media.noImage}
-                    </div>
-                  )}
-                  <figcaption className="mt-2">
-                    <a
-                      href={item.url ?? '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="line-clamp-2 text-sm font-medium text-ink hover:text-brand-ink"
-                    >
+                  <button
+                    type="button"
+                    onClick={() => onSelect(item.id)}
+                    className="group block w-full text-left"
+                  >
+                    {item.image_url ? (
+                      <RemoteImage
+                        src={item.image_url}
+                        alt={item.title}
+                        width={item.image_width}
+                        height={item.image_height}
+                        fallbackSeed={item.feed_title}
+                        className="rounded-lg transition-opacity group-hover:opacity-95"
+                      />
+                    ) : (
+                      <span className="flex aspect-[4/3] items-center justify-center rounded-lg bg-subtle text-xs text-ink-3">
+                        {t.media.noImage}
+                      </span>
+                    )}
+                    <span className="mt-2 block line-clamp-2 text-sm font-medium text-ink group-hover:text-brand-ink">
                       {item.title}
-                    </a>
-                    <p className="mt-0.5 text-2xs text-ink-3">
+                    </span>
+                    <span className="mt-0.5 block text-2xs text-ink-3">
                       {relativeTime(item.published_at, locale)}
-                    </p>
-                  </figcaption>
+                    </span>
+                  </button>
                 </figure>
               ))}
             </div>

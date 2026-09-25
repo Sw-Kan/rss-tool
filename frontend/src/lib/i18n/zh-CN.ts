@@ -88,6 +88,8 @@ export const zhCN = {
     prev: '上一篇',
     next: '下一篇',
     openOriginal: '打开原文',
+    playVideo: '播放视频',
+    detail: '条目详情',
     pick: '从左侧选择一篇文章开始阅读',
   },
 

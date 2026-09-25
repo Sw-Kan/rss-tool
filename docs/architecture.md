@@ -235,6 +235,10 @@ resolveMediaUrl(src, article.url)          GET /api/media?url=<encoded>
   （目录/源优先，与 `ReaderPage` 取标题的优先级一致）。旧书签与改造前的浏览器历史正长这样，
   只靠点按函数保证的话，按一次后退就能重现「目录里的收藏」。
 - 形态选择：`kind` 为 picture → 瀑布流，video → 网格，其余（含 all / favorites / 混合目录）→ 左列表右正文。
+- 瀑布流/网格里 **不挤右栏**（6 列压成 2–3 列就不是瀑布流了）：点条目走 `item=`，详情在 960×760 的**弹层**里（`MediaDetailOverlay` 复用 `ArticlePane`，`variant="overlay"`）。
+  打开是 push 一条历史，关闭（× / Esc / 遮罩）用 replace 清掉 `item=`，所以关掉后按后退不会又弹开；
+  选中态只由 `item=` 决定，深链 `?kind=picture&item=…` 刷新后弹层直接就绪。这两个模式不用 `items[0]` 兜底，
+  否则一进图片页就弹层。弹层里没有阅读进度与 AI 按钮（两者都只属于 article）。
 - 设置弹窗用 `settings=<tab>` 深链，不单独建路由。
 
 纯函数在 `frontend/src/lib/scope.ts`，有对应单测。

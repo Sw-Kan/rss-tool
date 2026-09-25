@@ -10,8 +10,10 @@ import {
   FileText,
   Loader2,
   Languages,
+  Play,
   Share2,
   Sparkles,
+  X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -30,6 +32,7 @@ import { downloadText } from '../../api/client';
 import { SourceLogo } from '../../components/Avatar';
 import { IconButton } from '../../components/Button';
 import { EmptyState } from '../../components/Field';
+import { RemoteImage } from '../../components/RemoteImage';
 import { absoluteTime, readingMinutes } from '../../lib/format';
 import { mediaUrl } from '../../lib/media';
 import { sanitizeHtml } from '../../lib/sanitize';
@@ -40,11 +43,21 @@ interface ArticlePaneProps {
   itemId: string | null;
   search: ReaderSearch;
   onNavigate: (itemId: string) => void;
+  /** overlay：用在图片/视频的详情弹层里，正文列宽一点（820），其余相同 */
+  variant?: 'pane' | 'overlay';
+  /** 给了就在顶栏右端多一个关闭按钮（弹层用） */
+  onClose?: () => void;
 }
 
 const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
 
-export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
+export function ArticlePane({
+  itemId,
+  search,
+  onNavigate,
+  variant = 'pane',
+  onClose,
+}: ArticlePaneProps) {
   const t = useT();
   const { locale } = useI18n();
   const detail = useItem(itemId);
@@ -159,6 +172,8 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
   };
 
   const isEssay = item.kind === 'article';
+  // 视频详情的落点：优先 feed 给的视频地址，退到原文页
+  const videoUrl = item.kind === 'video' ? (item.video_url ?? item.url) : null;
 
   return (
     <div className="relative flex h-full min-w-0 flex-1 flex-col bg-surface">
@@ -247,11 +262,18 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
           <IconButton label={t.article.exportPdf} onClick={() => window.print()}>
             <Download size={16} />
           </IconButton>
+          {onClose ? (
+            <IconButton label={t.close} onClick={onClose}>
+              <X size={16} />
+            </IconButton>
+          ) : null}
         </div>
       </header>
 
       <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
-        <article className="mx-auto max-w-[660px] px-6 py-8">
+        <article
+          className={`mx-auto py-8 ${variant === 'overlay' ? 'max-w-[820px] px-8' : 'max-w-[660px] px-6'}`}
+        >
           <h1 className="text-3xl font-bold leading-snug text-ink">{item.title}</h1>
 
           {translatedTitle ? (
@@ -281,12 +303,30 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
             ) : null}
           </div>
 
-          {item.kind === 'video' && item.video_url ? (
-            <p className="mt-6">
-              <a href={item.video_url} target="_blank" rel="noopener noreferrer">
-                {item.channel_name ?? item.feed_title} · {item.video_url}
-              </a>
-            </p>
+          {videoUrl ? (
+            <a
+              href={videoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={t.article.playVideo}
+              className="group relative mt-6 block"
+            >
+              {item.image_url ? (
+                <RemoteImage
+                  src={item.image_url}
+                  alt={item.title}
+                  width={item.image_width}
+                  height={item.image_height}
+                  fallbackSeed={item.feed_title}
+                  className="aspect-video rounded-lg"
+                />
+              ) : (
+                <span className="flex aspect-video items-center justify-center rounded-lg bg-subtle text-xs text-ink-3">
+                  {t.media.noCover}
+                </span>
+              )}
+              <PlayBadge />
+            </a>
           ) : null}
 
           {item.kind === 'picture' && item.image_url ? (
@@ -367,6 +407,15 @@ export function ArticlePane({ itemId, search, onNavigate }: ArticlePaneProps) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** 视频详情里的封面按钮：居中胶囊（设计稿：`--bg-strong` 55% 底 + 白色三角）。 */
+function PlayBadge() {
+  return (
+    <span className="pointer-events-none absolute top-1/2 left-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-strong/55 text-on-strong transition-transform group-hover:scale-105">
+      <Play size={22} className="translate-x-[2px] fill-current" />
+    </span>
   );
 }
 

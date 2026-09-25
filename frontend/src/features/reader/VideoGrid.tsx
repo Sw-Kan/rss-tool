@@ -62,7 +62,11 @@ export function VideoGrid({
         <ul className="grid grid-cols-2 gap-x-[17px] gap-y-10 sm:grid-cols-3 lg:grid-cols-4 min-[1280px]:grid-cols-5">
           {items.map((item) => (
             <li key={item.id}>
-              <button type="button" onClick={() => onSelect(item.id)} className="w-full text-left">
+              <button
+                type="button"
+                onClick={() => onSelect(item.id)}
+                className="group w-full text-left"
+              >
                 {item.image_url ? (
                   <RemoteImage
                     src={item.image_url}
@@ -78,7 +82,7 @@ export function VideoGrid({
                   </span>
                 )}
 
-                <span className="mt-2 line-clamp-2 block text-sm font-medium text-ink">
+                <span className="mt-2 line-clamp-2 block text-sm font-medium text-ink group-hover:text-brand-ink">
                   {item.title}
                 </span>
                 <span className="mt-1 block text-xs text-ink-2">

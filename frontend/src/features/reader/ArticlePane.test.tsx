@@ -75,7 +75,7 @@ function sseChannel() {
   };
 }
 
-function stubFetch(enabledProviders: unknown[], stream?: () => Promise<Response>) {
+function stubFetch(enabledProviders: unknown[], stream?: () => Promise<Response>, item: unknown = ITEM) {
   calls = [];
   return (url: string, init?: RequestInit) => {
     calls.push({ url, method: (init?.method ?? 'GET').toUpperCase() });
@@ -98,7 +98,7 @@ function stubFetch(enabledProviders: unknown[], stream?: () => Promise<Response>
       );
     if (url.includes('/context'))
       return Promise.resolve(json({ prev_id: null, next_id: null, index: 0, total: 1 }));
-    if (url.includes('/api/items/a1')) return Promise.resolve(json(ITEM));
+    if (url.includes('/api/items/a1')) return Promise.resolve(json(item));
     return Promise.resolve(json({}));
   };
 }
@@ -107,7 +107,7 @@ function Probe() {
   return <span data-testid="query">{useLocation().search}</span>;
 }
 
-function renderPane() {
+function renderPane(options: { onClose?: () => void; variant?: 'pane' | 'overlay' } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
@@ -117,6 +117,8 @@ function renderPane() {
             itemId="a1"
             search={parseSearch(new URLSearchParams('item=a1'))}
             onNavigate={() => {}}
+            onClose={options.onClose}
+            variant={options.variant}
           />
           <Probe />
         </MemoryRouter>
@@ -228,5 +230,54 @@ describe('ArticlePane 的 AI 按钮', () => {
 
     await waitFor(() => expect(screen.getByText(/限流（429）/)).toBeTruthy());
     expect(screen.queryByText('写到一半')).toBeNull();
+  });
+});
+
+const VIDEO_ITEM = {
+  ...ITEM,
+  kind: 'video',
+  channel_name: '少数派视频',
+  image_url: 'https://cdn.example.com/cover.jpg',
+  image_width: 1280,
+  image_height: 720,
+  video_url: 'https://www.bilibili.com/video/BV1xx411c7mD',
+};
+
+describe('视频详情与弹层形态', () => {
+  it('视频条目：封面 + 播放按钮指向原站，而不是那行裸链接', async () => {
+    vi.stubGlobal('fetch', stubFetch([], undefined, VIDEO_ITEM));
+    renderPane();
+
+    const play = await screen.findByRole('link', { name: zhCN.article.playVideo });
+    expect(play.getAttribute('href')).toBe(VIDEO_ITEM.video_url);
+    expect(play.getAttribute('target')).toBe('_blank');
+    expect(play.getAttribute('rel')).toContain('noopener');
+    // 封面走媒体缓存（防盗链由后端带 Referer 处理）
+    const cover = screen.getByRole('img', { name: VIDEO_ITEM.title });
+    expect(cover.getAttribute('src')).toContain('/api/media?url=');
+    expect(screen.queryByText(VIDEO_ITEM.video_url)).toBeNull();
+  });
+
+  it('视频条目没有 video_url 时退到原文页', async () => {
+    vi.stubGlobal('fetch', stubFetch([], undefined, { ...VIDEO_ITEM, video_url: null }));
+    renderPane();
+
+    const play = await screen.findByRole('link', { name: zhCN.article.playVideo });
+    expect(play.getAttribute('href')).toBe(ITEM.url);
+  });
+
+  it('overlay 形态：顶栏右端是关闭按钮，点一下就走回调', async () => {
+    const onClose = vi.fn();
+    renderPane({ variant: 'overlay', onClose });
+    await waitFor(() => expect(screen.getByRole('heading', { name: ITEM.title })).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: zhCN.close }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('右栏形态（all 模式）没有关闭按钮', async () => {
+    renderPane();
+    await waitFor(() => expect(screen.getByRole('heading', { name: ITEM.title })).toBeTruthy());
+    expect(screen.queryByRole('button', { name: zhCN.close })).toBeNull();
   });
 });

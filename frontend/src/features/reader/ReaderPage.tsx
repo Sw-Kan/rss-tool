@@ -12,6 +12,7 @@ import type { NavKey, SidebarSummary } from '../../types';
 import { AddSourceDialog } from './AddSourceDialog';
 import { ArticlePane } from './ArticlePane';
 import { ItemList } from './ItemList';
+import { MediaDetailOverlay } from './MediaDetailOverlay';
 import { PictureWall } from './PictureWall';
 import { VideoGrid } from './VideoGrid';
 
@@ -38,6 +39,10 @@ export function ReaderPage() {
   };
 
   const selectedId = search.item ?? items[0]?.id ?? null;
+  // 图片/视频的详情只认 URL 里的 item，不用 items[0] 兜底：否则一进图片页就弹层
+  const mediaItemId = search.item;
+  const selectItem = (id: string) => update(applyItem(id, search));
+  const closeMediaDetail = () => update(applyItem(null, search), { replace: true });
 
   // 过滤条件变化时回到阅读器顶部
   useEffect(() => {
@@ -124,30 +129,47 @@ export function ReaderPage() {
 
   if (mode === 'pictures') {
     return (
-      <PictureWall
-        title={title}
-        subtitle={subtitle}
-        items={items}
-        search={search}
-        hasMore={canLoadMore}
-        loadingMore={itemsQuery.isFetchingNextPage}
-        onLoadMore={loadMore}
-      />
+      <>
+        <PictureWall
+          title={title}
+          subtitle={subtitle}
+          items={items}
+          search={search}
+          onSelect={selectItem}
+          hasMore={canLoadMore}
+          loadingMore={itemsQuery.isFetchingNextPage}
+          onLoadMore={loadMore}
+        />
+        <MediaDetailOverlay
+          itemId={mediaItemId}
+          search={search}
+          onNavigate={selectItem}
+          onClose={closeMediaDetail}
+        />
+      </>
     );
   }
 
   if (mode === 'videos') {
     return (
-      <VideoGrid
-        title={title}
-        subtitle={subtitle}
-        items={items}
-        search={search}
-        onSelect={(id) => update(applyItem(id, search))}
-        hasMore={canLoadMore}
-        loadingMore={itemsQuery.isFetchingNextPage}
-        onLoadMore={loadMore}
-      />
+      <>
+        <VideoGrid
+          title={title}
+          subtitle={subtitle}
+          items={items}
+          search={search}
+          onSelect={selectItem}
+          hasMore={canLoadMore}
+          loadingMore={itemsQuery.isFetchingNextPage}
+          onLoadMore={loadMore}
+        />
+        <MediaDetailOverlay
+          itemId={mediaItemId}
+          search={search}
+          onNavigate={selectItem}
+          onClose={closeMediaDetail}
+        />
+      </>
     );
   }
 
@@ -159,7 +181,7 @@ export function ReaderPage() {
         items={items}
         search={search}
         selectedId={selectedId}
-        onSelect={(id) => update(applyItem(id, search))}
+        onSelect={selectItem}
         onState={(state) => update(applyState(state, search))}
         hasMore={canLoadMore}
         loadingMore={itemsQuery.isFetchingNextPage}

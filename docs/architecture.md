@@ -132,21 +132,18 @@ src/lib/i18n/index.tsx  LOCALES / detectLocale / bundles / I18nProvider / useT
 
 ```
 集成（integrations，按 kind 一行，config 是 JSON）
-  rsshub        base_url + access_key + env + params[{name,scope,value,secret,target}]
+  rsshub        base_url + access_key（只管「怎么连」）
   obsidian      vault_path
   feishu        webhook_url
   custom_export endpoint
 
-  顶点用法一：POST /api/feeds 收到裸路由（/sspai/matrix）→ expand_route() 拼成完整地址
-              并补 ?key=ACCESS_KEY；只有 target='query' 的参数按 scope 前缀拼成 query
-              （target='env' 的是 RSSHub 自己的 config，拼进 URL 既没用又会把凭据写进 feeds.url）
-  顶点用法二：GET /api/integrations/rsshub/env-snippet 把 target='env' 的参数与「env」
-              文本框渲染成 docker -e / .env 两段可复制文本（rss-tool 不碰别人的容器）
-  顶点用法三：被自动化的动作消费（推送飞书 / 写入 Obsidian / 推自定义接口）
+  顶点用法一：POST /api/feeds 收到裸路由（/sspai/matrix）→ expand_route() 用 base_url 拼成
+              完整地址，有 ACCESS_KEY 就补 ?key=
+  顶点用法二：被自动化的动作消费（推送飞书 / 写入 Obsidian / 推自定义接口）
 
-  参数为什么分两类：PIXIV_REFRESH_TOKEN / GITHUB_ACCESS_TOKEN 这类是 RSSHub 的 config，
-  RSSHub 从进程环境读、**不看 query**；而 limit / filter 这种才是路由自己读的 query 参数。
-  弄反了就是「配置里填了、实际没生效」——界面上看不出来，所以归纳到两种用途并在 UI 里标明。
+  RSSHub 自己的配置（cookie / refresh_token / cache）在 RSSHub 侧维护：rss-tool 既不给它
+  注入也不读取（早期版本试过把参数拼进 URL / 生成 env 片段，两条都不通：前者把凭据写进
+  共享的 feeds.url，后者仍然得用户重启容器才生效），所以集成页只留地址 / 密钥 / 测试连接。
 
 代理（proxy_config，实例级单行）
   feed_fetch.fetch() 每跳都用 proxy.build_client(spec, url, addresses) 建客户端

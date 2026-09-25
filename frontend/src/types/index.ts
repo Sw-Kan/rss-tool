@@ -215,27 +215,10 @@ export interface AiResults {
 
 export type IntegrationKind = 'rsshub' | 'obsidian' | 'feishu' | 'custom_export';
 
-/** `query`：按作用范围拼到订阅地址；`env`：RSSHub 自己的 config，只能在片段里复制过去。 */
-export type RsshubParamTarget = 'query' | 'env';
-
-export interface RsshubParam {
-  name: string;
-  scope: string;
-  value: string;
-  secret: boolean;
-  target: RsshubParamTarget;
-}
-
-export interface RsshubEnvSnippet {
-  dotenv: string;
-  docker_flags: string;
-}
-
+/** 只负责「怎么连你的 RSSHub」；RSSHub 自己的 cookie / token 在 RSSHub 侧配。 */
 export interface RsshubConfig {
   base_url: string;
   access_key: string;
-  env: string;
-  params: RsshubParam[];
 }
 
 export interface CustomExportConfig {

@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-import shlex
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,7 +30,7 @@ logger = logging.getLogger("rss-tool.integrations")
 KINDS = ("rsshub", "obsidian", "feishu", "custom_export")
 
 DEFAULT_CONFIGS: dict[str, dict] = {
-    "rsshub": {"base_url": "", "access_key": "", "env": "", "params": []},
+    "rsshub": {"base_url": "", "access_key": ""},
     "obsidian": {"vault_path": ""},
     "feishu": {"webhook_url": ""},
     "custom_export": {"endpoint": "", "schema_template": ""},
@@ -39,13 +38,6 @@ DEFAULT_CONFIGS: dict[str, dict] = {
 
 # 一次刷新里同一条规则最多推几条，避免一口气给 webhook 打上百个请求
 MAX_PUSH_PER_RUN = 5
-
-# 参数用途：query = 拼到订阅地址；env = RSSHub 自己的 config（它从进程环境读）
-PARAM_TARGETS = ("query", "env")
-# 名字像凭据的一律按密文处理，界面上「cookie / token 类参数以掩码显示」这句才算数
-_SECRET_NAME = re.compile(r"token|cookie|secret|key|password|auth", re.IGNORECASE)
-# RSSHub 的 config 变量名都是大写下划线（PIXIV_REFRESH_TOKEN / GITHUB_ACCESS_TOKEN）
-_ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 _UNSAFE_FILENAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
@@ -64,55 +56,16 @@ def get_row(db: Session, user_id: str, kind: str) -> Integration | None:
 
 
 def get_config(db: Session, user_id: str, kind: str) -> dict:
-    """取配置，缺失的键用默认值补齐，调用方不用做 None 判断。"""
+    """取配置，缺失的键用默认值补齐，调用方不用做 None 判断。
+
+    老版本写过的 `params` / `env` 键可能还在 JSON 里：这里不再认识它们，
+    于是既不会回传、也不会参与拼地址（见 tests 里那条 legacy 用例）。
+    """
     defaults = dict(DEFAULT_CONFIGS.get(kind, {}))
     row = get_row(db, user_id, kind)
     if row is None:
         return defaults
-    merged = {**defaults, **(row.config or {})}
-    if kind == "rsshub":
-        merged["params"] = normalize_params(merged.get("params") or [])
-    return merged
-
-
-def normalize_params(params: list[dict]) -> list[dict]:
-    """把参数归一成同一种形状。
-
-    - 老数据没有 `target`：当作 `query`，行为不变。
-    - `query` 的作用范围不带 `/` 会被 `path.startswith(scope)` 静默丢弃（拼不上任何地址），
-      所以这里补上。
-    - `env` 是凭据：一律按密文，且作用范围无意义。
-    - 名字像凭据的 query 参数（cookie / token…）也按密文，否则界面上那句声明是假的。
-    """
-    normalized: list[dict] = []
-    for item in params or []:
-        entry = dict(item)
-        target = str(entry.get("target") or "query")
-        if target not in PARAM_TARGETS:
-            target = "query"
-        name = str(entry.get("name") or "").strip()
-
-        entry["name"] = name
-        entry["target"] = target
-        entry["value"] = str(entry.get("value") or "")
-        if target == "env":
-            entry["scope"] = ""
-            entry["secret"] = True
-        else:
-            scope = str(entry.get("scope") or "").strip()
-            entry["scope"] = scope if not scope or scope.startswith("/") else f"/{scope}"
-            entry["secret"] = bool(entry.get("secret")) or bool(_SECRET_NAME.search(name))
-        normalized.append(entry)
-    return normalized
-
-
-def validate_params(params: list[dict]) -> None:
-    """变量名写成小写的话，RSSHub 那边什么都不会发生，界面上也看不出来 —— 先拦住。"""
-    for item in params:
-        if item.get("target") == "env" and not _ENV_NAME.match(str(item.get("name") or "")):
-            raise IntegrationError(
-                "传给 RSSHub 的环境变量名必须是大写字母、数字或下划线，例如 PIXIV_REFRESH_TOKEN"
-            )
+    return {**defaults, **(row.config or {})}
 
 
 def is_enabled(db: Session, user_id: str, kind: str) -> bool:
@@ -169,8 +122,8 @@ def upsert(
 def _merge_config(kind: str, current: dict, incoming: dict) -> dict:
     """合并新配置。
 
-    密文字段（access_key、secret 参数）在接口上是掩码回传的，前端原样送回时
-    必须保留旧明文，否则用户改一次别的字段就把密钥抹掉了。
+    密文字段（access_key）在接口上是掩码回传的，前端原样送回时必须保留旧明文，
+    否则用户改一次别的字段就把密钥抹掉了。
     """
     merged = {**current}
     for key, value in incoming.items():
@@ -184,23 +137,6 @@ def _merge_config(kind: str, current: dict, incoming: dict) -> dict:
     if incoming.get("access_key"):
         # 前端没改就不回传新值；回传了就以新值为准（可能是掩码，下面按情况判断）
         merged["access_key"] = _keep_secret(current.get("access_key", ""), incoming["access_key"])
-
-    params = incoming.get("params")
-    if params is not None:
-        old_params = current.get("params") or []
-        restored: list[dict] = []
-        # 先归一化再判断密文：env 型 / 名字像凭据的参数是归一化后才标记 secret 的，
-        # 否则前端回传的掩码会被当成真值存进库
-        for index, item in enumerate(normalize_params(params)):
-            entry = dict(item)
-            if entry.get("secret"):
-                previous = old_params[index] if index < len(old_params) else {}
-                entry["value"] = _keep_secret(previous.get("value", ""), entry.get("value", ""))
-            restored.append(entry)
-        merged["params"] = restored
-
-    merged["params"] = normalize_params(merged.get("params") or [])
-    validate_params(merged["params"])
 
     return merged
 
@@ -233,49 +169,12 @@ def mask_secret(value: str) -> str:
 
 
 def masked_config(kind: str, config: dict) -> dict:
-    """对外输出前抹掉密文。"""
+    """对外输出前抹掉密文。RSSHub 只有 access_key 一项。"""
     if kind != "rsshub":
         return dict(config)
     safe = dict(config)
     safe["access_key"] = mask_secret(config.get("access_key", ""))
-    safe["params"] = [
-        {**item, "value": mask_secret(item.get("value", ""))} if item.get("secret") else dict(item)
-        for item in normalize_params(config.get("params") or [])
-    ]
     return safe
-
-
-def env_snippet(config: dict) -> dict[str, str]:
-    """把要传给 RSSHub 的环境变量渲染成可复制的两段文本。
-
-    来源 = `target='env'` 的参数（凭据）+「环境变量 env」文本框（CACHE_TYPE 这类非机密）。
-    rss-tool 改不了别人的容器，所以只能生成片段让用户自己贴到 `docker run -e` / `.env`；
-    **这是全项目唯一把集成凭据明文回传的地方**（其它接口一律掩码）—— 片段不能复制就没意义。
-    """
-    merged: dict[str, str] = {}
-    for item in normalize_params(config.get("params") or []):
-        if item.get("target") != "env":
-            continue
-        name = str(item.get("name") or "").strip()
-        value = str(item.get("value") or "").strip()
-        if name and value:
-            merged[name] = value
-
-    # 环境变量文本框按逗号/分号分隔；参数里已经给了的同名变量优先
-    for raw in str(config.get("env") or "").replace(";", ",").split(","):
-        name, separator, value = raw.strip().partition("=")
-        if not separator:
-            continue
-        name, value = name.strip(), value.strip()
-        if name and value:
-            merged.setdefault(name, value)
-
-    lines = list(merged.items())
-    return {
-        "dotenv": "\n".join(f"{name}={value}" for name, value in lines),
-        # 值可能带空格/引号，交给 stdlib 转义，不手写
-        "docker_flags": " ".join(f"-e {name}={shlex.quote(value)}" for name, value in lines),
-    }
 
 
 # ---------- RSSHub ----------
@@ -299,19 +198,6 @@ def expand_route(config: dict, route: str) -> str:
         path = f"/{path}"
 
     query: list[tuple[str, str]] = []
-    for item in config.get("params") or []:
-        if (item.get("target") or "query") != "query":
-            # env 型是 RSSHub 自己的配置：拼进订阅地址既没用，还会把凭据写进 feeds.url
-            continue
-        name = (item.get("name") or "").strip()
-        value = (item.get("value") or "").strip()
-        if not name or not value:
-            continue
-        scope = (item.get("scope") or "").strip()
-        if scope and not path.startswith(scope):
-            continue
-        query.append((name, value))
-
     access_key = (config.get("access_key") or "").strip()
     if access_key:
         query.append(("key", access_key))

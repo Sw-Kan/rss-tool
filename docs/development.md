@@ -51,6 +51,7 @@ make db-reset       # 删除 rss.db 与 uploads/，下次启动重建
 | 前端绕过代理直连 | `frontend/.env.local` 里设 `VITE_API_BASE=http://localhost:8000` |
 | 看调度器是否在跑 | 后端日志里的 `scheduler: user ... 每 N 分钟刷新` |
 | 加自建 RSSHub / 局域网源 | 设 `ALLOW_PRIVATE_FETCH=true` 后重启后端；默认会被 SSRF 防护拒绝 |
+| RSSHub 需要登录的路由取不到内容 | 那是 RSSHub 侧的事（cookie / refresh_token 配在它自己的容器里，改完要重建），rss-tool 只管连接；先看 `docker logs rsshub`（例如 bilibili 的 `-352 风控校验失败` → `503`） |
 | 看全文抽取效果 | 库里查：`sqlite3 backend/data/rss.db "select extract_status,content_source,count(*) from articles group by 1,2"` |
 | 关掉全文抽取 | 设 `EXTRACT_ENABLED=false`（调试抓取管线时用） |
 | 本机 RSSHub | `docker start rsshub`；容器内用 `http://rsshub:1200`，宿主用 `http://127.0.0.1:1200`，两者都需要 `ALLOW_PRIVATE_FETCH=true` |
@@ -107,8 +108,7 @@ make typecheck  # tsc --noEmit
 - [ ] 切到 English 后点「Summary」→ 上游收到的 prompt 是英文（可用假上游打印请求体验证）
 - [ ] 登录页右上角胶囊在未登录状态下也能切换语言，并按浏览器语言给默认值
 - [ ] 设置 → 集成：填 RSSHub 服务地址 → 点卡片左侧的循环图标 → 显示「连接正常 · Nms」
-- [ ] 集成 → 加一个「传给 RSSHub」的参数（如 `PIXIV_REFRESH_TOKEN`）→ 下方出现 `-e PIXIV_REFRESH_TOKEN=…` 片段；加一个「拼到路由」的参数（如 `limit`，作用范围 `/pixiv`）→ 只有它出现在订阅地址上，凭据**不**出现（`sqlite3 … "select url from feeds"` 验）
-- [ ] 把片段贴进 `docker run -e …` 重建 RSSHub 容器 → 需要登录的路由（pixiv 等）能取到内容；不填则取不到 —— 改完 env 必须重建容器才生效
+- [ ] 集成 → 自建 RSSHub 只有三项：服务地址 / 访问密钥 / 测试连接；添加订阅时填裸路由（如 `/sspai/matrix`）→ 库里存的地址是「服务地址 + 路由」（有密钥则带 `?key=`）
 - [ ] 集成里加一条路由参数（如 `limit` / `/twitter/user` / `20`），然后添加订阅时只填 `/twitter/user/xxx` → 库里存的地址已带上参数
 - [ ] 集成 → Obsidian 填绝对路径 → 自动化加一条「新文章到达 + 标题包含 X → 保存到 Obsidian」→ 刷新后仓库里出现 md 文件
 - [ ] 设置 → 代理：自定义模式填 `http://127.0.0.1:1` → 测试连接失败且提示指向 `host.docker.internal`；填正确地址（如宿主机代理）→ 成功并显示经由与延迟；切回系统代理 → 恢复

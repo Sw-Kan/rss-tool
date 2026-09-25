@@ -315,33 +315,12 @@ RuleActionType = Literal[
 ]
 
 
-class RsshubParam(BaseModel):
-    """RSSHub 参数，两种用途：
-
-    - `query`：由路由读的 query 参数，按 `scope`（路由前缀）拼到展开后的订阅地址上。
-    - `env`：RSSHub 自己的 config（它从进程环境读），**不**拼进订阅地址，
-      只出现在 `GET /api/integrations/rsshub/env-snippet` 生成的片段里。
-    """
-
-    name: str = Field(min_length=1, max_length=60)
-    scope: str = Field(default="", max_length=200)
-    value: str = Field(default="", max_length=1000)
-    secret: bool = False
-    target: Literal["query", "env"] = "query"
-
-
 class RsshubConfig(BaseModel):
+    """只负责「怎么连你的 RSSHub」。RSSHub 自己的配置（cookie / refresh_token /
+    cache）在 RSSHub 侧自己维护，rss-tool 不注入也不读取。"""
+
     base_url: str = Field(default="", max_length=500)
     access_key: str = Field(default="", max_length=500)
-    env: str = Field(default="", max_length=2000)
-    params: list[RsshubParam] = Field(default_factory=list, max_length=50)
-
-
-class RsshubEnvSnippetOut(BaseModel):
-    """RSSHub 端环境变量片段。**集成凭据唯一明文回传的地方**（片段要能复制才有用）。"""
-
-    dotenv: str
-    docker_flags: str
 
 
 class ObsidianConfig(BaseModel):

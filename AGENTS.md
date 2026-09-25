@@ -178,8 +178,7 @@ make lint && make typecheck && make test
 - 自动化只在**刷新**触发，且只处理本次新增的文章；「添加订阅」不触发（否则加一个源就会瞬间打出一堆推送）。
 - 定时规则（`trigger=schedule`）的 `HH:MM` 按**服务器时区**解释。Docker 里容器默认 UTC，必须设 `TZ`（compose 已透传，默认 `Asia/Shanghai`），否则「早上八点」会差好几个小时。
 - 推送类动作（飞书 / Obsidian / 自定义接口）每条规则每轮刷新上限 `MAX_PUSH_PER_RUN`（5 条）。集成未配置时记日志跳过，不算命中、不抛错。
-- RSSHub 参数分两种用途（`target`）：`query` = 按 `scope`（路由前缀，写库前自动补 `/`）拼进展开后的订阅地址；`env` = RSSHub 自己的 config（它从**进程环境**读，不看 query），只出现在 `GET /api/integrations/rsshub/env-snippet` 生成的 `docker -e` / `.env` 片段里，由用户自己贴到 RSSHub 的启动命令（rss-tool 不碰别人的容器）。`ACCESS_KEY` 一律以 `?key=` 传递。设计稿里「作用范围」写的是服务名（如「知乎 / 微博」），实际语义按路由前缀实现。
-- **`/api/integrations/rsshub/env-snippet` 是全项目唯一把集成凭据明文回传的接口**（其余接口只给掩码，`access_key` 与密文参数同理）；密文判定包含 `target='env'` 与名字命中 `token/cookie/secret/key/password/auth` 的参数，在**写库时**归一化（不是只在读时描），否则前端回传的掩码会被当成真值存起来。
+- 自建 RSSHub 集成只管**连接**：`base_url`（含端口）+ `access_key`（一律以 `?key=` 传递）+「测试连接」；裸路由（`/sspai/matrix`）按 `base_url` 展开。RSSHub 自己的配置（cookie / refresh_token / cache）由用户在 RSSHub 侧维护，rss-tool **不注入也不读取**：早期版本试过「把参数拼进订阅地址」（凭据会进共享的 `feeds.url`）与「生成 env 片段」（仍然得用户自己重建容器才生效），两条都不通，所以全删了。旧库里遗留的 `env` / `params` 键不再回传、也不参与拼地址。
 - 自定义导出推的是固定 JSON 结构（title/url/author/feed/channel/kind/published_at/summary），不做用户自定义 schema 模板。
 - Obsidian / 飞书 / 自定义接口目前只被自动化的动作消费，阅读器里没有单独的「发送到」按钮。
 - 媒体缓存只缓存**栅格图**白名单（jpeg/png/gif/webp/avif/bmp），**绝不缓存 SVG**——SVG 能带脚本，从本站源上返回等于开 XSS。类型按魔数判定，不信上游声明的 Content-Type。

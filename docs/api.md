@@ -183,36 +183,23 @@ type AiResultOut  = { kind, content, model, cached: boolean, tokens_in, tokens_o
 | GET | `/api/integrations` | `{items: IntegrationOut[]}`，四种 kind 都会返回（缺的给默认值） |
 | PUT | `/api/integrations/{kind}` | body: `{enabled?, rsshub?, obsidian?, feishu?, custom_export?}` |
 | POST | `/api/integrations/rsshub/test` | `{ok, message, latency_ms}` |
-| GET | `/api/integrations/rsshub/env-snippet` | `{dotenv, docker_flags}`，**明文**（片段要能复制才有用），`Cache-Control: no-store` |
 | GET | `/api/integrations/custom_export/default-schema` | `{schema_template}`，新建时给前端的默认模板 |
 | POST | `/api/integrations/custom_export/test` | 用一条样本数据真发一次，`{ok, message, latency_ms}` |
 
 ```ts
 type IntegrationOut = { kind: 'rsshub'|'obsidian'|'feishu'|'custom_export'
                         enabled: boolean; updated_at: string | null
-                        rsshub?: { base_url, access_key, env, params: RsshubParam[] }
+                        rsshub?: { base_url, access_key }
                         obsidian?: { vault_path }; feishu?: { webhook_url }
                         custom_export?: { endpoint, schema_template } }
-type RsshubParam = { name: string; scope: string; value: string; secret: boolean
-                        target: 'query' | 'env' }   // 缺省 = 'query'
 ```
-
-`target` 决定这个参数去哪：
-
-- `query`（拼到路由）：按 `scope`（路由前缀，写库前自动补 `/`）拼进展开后的订阅地址。
-- `env`（传给 RSSHub）：RSSHub 自己的 config，它从进程环境读、**不看 query** ——
-  所以这类只出现在 `env-snippet` 里，由用户贴到 RSSHub 的启动命令。
-
-`env-snippet` 的 `docker_flags` 已用 `shlex.quote()` 转义（值里有空格/引号也不用自己包）；
-`dotenv` 是 `NAME=value` 行，供 `--env-file` 用。片段 = `target='env'` 的参数 + 「环境变量 env」
-文本框里的行（同名时参数优先，`limit` 这类 query 参数不会进去）。
 
 约定：
 
-- **`env-snippet` 是全项目唯一把集成凭据明文回传的接口**（其它接口只给掩码，包括 `/api/integrations`）：
-  片段必须能被复制走。需登录，带 `no-store`。
-- `access_key` 与密文参数的值只以掩码回传；回传值里只要带 `•` 就视为「没改」。
-  密文判定：`secret=true`，或 `target='env'`，或名字命中 `token/cookie/secret/key/password/auth`（写库时归一化，不是只在读的时候描）。
+- RSSHub 这一块只管**连接**：`base_url`（含端口）+ `access_key`（拼成 `?key=`）+「测试连接」。
+  RSSHub 自己的配置（cookie / refresh_token / cache）在 RSSHub 侧维护，rss-tool 不注入也不读取；
+  旧版本写过的 `env` / `params` 键即使还在 JSON 里，也不再回传、不参与拼地址。
+- `access_key` 只以掩码回传；回传值里只要带 `•` 就视为「没改」，保留库里的原文。
 - `custom_export.schema_template` 是 JSON 模板，用 `{{变量}}` 占位；可用变量固定 8 个：
   `title` / `url` / `author` / `feed` / `channel` / `kind` / `published_at` / `summary`。
   留空则用内置默认结构。模板里出现未知变量或渲染后不是合法 JSON → 400，错误信息会指出具体变量。

@@ -28,7 +28,7 @@ def test_list_returns_all_kinds_with_defaults(auth_client: TestClient) -> None:
     items = auth_client.get("/api/integrations").json()["items"]
     assert [item["kind"] for item in items] == list(integrations.KINDS)
     rsshub = next(item for item in items if item["kind"] == "rsshub")
-    assert rsshub["rsshub"] == {"base_url": "", "access_key": "", "env": "", "params": []}
+    assert rsshub["rsshub"] == {"base_url": "", "access_key": ""}
     assert rsshub["enabled"] is True
 
 
@@ -52,67 +52,71 @@ def test_update_and_read_back_rsshub(auth_client: TestClient) -> None:
         "/api/integrations/rsshub",
         json={
             "enabled": False,
-            "rsshub": {
-                "base_url": RSSHUB,
-                "access_key": "s3cret",
-                "env": "CACHE_TYPE=memory, CACHE_EXPIRE=600",
-                "params": [
-                    {
-                        "name": "cookie",
-                        "scope": "/zhihu",
-                        "value": "z_c0=abcdef123456",
-                        "secret": True,
-                    },
-                    {"name": "limit", "scope": "/twitter/user", "value": "20", "secret": False},
-                ],
-            },
+            "rsshub": {"base_url": RSSHUB, "access_key": "s3cret"},
         },
     )
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["enabled"] is False
-    assert body["rsshub"]["base_url"] == RSSHUB
-    # 密文一律掩码回传
-    assert body["rsshub"]["access_key"] == "••••••••"
-    assert body["rsshub"]["params"][0]["value"] == "z_c0=••••••••"
-    assert body["rsshub"]["params"][1]["value"] == "20"
-    assert "z_c0=abcdef123456" not in response.text
+    assert body["rsshub"] == {"base_url": RSSHUB, "access_key": "••••••••"}
     assert "s3cret" not in response.text
+
+
+def test_legacy_params_and_env_are_ignored(auth_client: TestClient) -> None:
+    """老版本写过的 params / env 键还在 JSON 里：不回传、也不参与拼地址。"""
+    from app.db import SessionLocal
+    from app.models import Integration
+
+    with SessionLocal() as session:
+        session.add(
+            Integration(
+                user_id=_only_user_id(session),
+                kind="rsshub",
+                enabled=True,
+                config={
+                    "base_url": RSSHUB,
+                    "access_key": "s3cret",
+                    "env": "CACHE_TYPE=memory",
+                    "params": [
+                        {"name": "cookie", "scope": "/zhihu", "value": "z_c0=abc"},
+                        {
+                            "name": "PIXIV_REFRESH_TOKEN",
+                            "value": "pixiv-secret",
+                            "target": "env",
+                        },
+                    ],
+                },
+            )
+        )
+        session.commit()
+
+    items = auth_client.get("/api/integrations").json()["items"]
+    rsshub = next(item for item in items if item["kind"] == "rsshub")
+    assert rsshub["rsshub"] == {"base_url": RSSHUB, "access_key": "••••••••"}
+    assert "params" not in rsshub["rsshub"]
+    assert "env" not in rsshub["rsshub"]
+    # 展开时也不能把遗留的凭据拼进订阅地址
+    url = integrations.expand_route(
+        {"base_url": RSSHUB, "access_key": "s3cret", "params": []}, "/zhihu/people/1"
+    )
+    assert url == f"{RSSHUB}/zhihu/people/1?key=s3cret"
 
 
 def test_masked_secret_sent_back_keeps_real_value(auth_client: TestClient, db) -> None:  # noqa: ANN001
     first = auth_client.put(
         "/api/integrations/rsshub",
-        json={
-            "rsshub": {
-                "base_url": RSSHUB,
-                "access_key": "real-key-1234",
-                "params": [
-                    {"name": "cookie", "scope": "/zhihu", "value": "z_c0=abcdef", "secret": True}
-                ],
-            }
-        },
+        json={"rsshub": {"base_url": RSSHUB, "access_key": "real-key-1234"}},
     ).json()
     # 接口回传的就是掩码
     assert first["rsshub"]["access_key"] == "real-••••••••1234"
-    assert first["rsshub"]["params"][0]["value"] == "z_c0=••••••••"
 
-    # 前端把掩码原样送回，只改 env
+    # 前端把掩码原样送回（只改了 base_url）：真密钥不能被掩码盖掉
     auth_client.put(
         "/api/integrations/rsshub",
         json={
             "rsshub": {
-                "base_url": RSSHUB,
+                "base_url": f"{RSSHUB}/other",
                 "access_key": first["rsshub"]["access_key"],
-                "env": "DEBUG=1",
-                "params": [
-                    {
-                        "name": "cookie",
-                        "scope": "/zhihu",
-                        "value": first["rsshub"]["params"][0]["value"],
-                        "secret": True,
-                    }
-                ],
             }
         },
     )
@@ -122,8 +126,7 @@ def test_masked_secret_sent_back_keeps_real_value(auth_client: TestClient, db) -
     with SessionLocal() as session:
         config = integrations.get_config(session, _only_user_id(session), "rsshub")
     assert config["access_key"] == "real-key-1234"
-    assert config["params"][0]["value"] == "z_c0=abcdef"
-    assert config["env"] == "DEBUG=1"
+    assert config["base_url"] == f"{RSSHUB}/other"
 
 
 def test_any_masked_value_is_treated_as_unchanged(auth_client: TestClient, db) -> None:  # noqa: ANN001
@@ -177,28 +180,18 @@ def test_mask_secret(raw: str, expected: str) -> None:
 # ---------- 路由展开 ----------
 
 
-def test_expand_route_applies_scope_and_access_key() -> None:
-    config = {
-        "base_url": RSSHUB + "/",
-        "access_key": "s3cret",
-        "params": [
-            {"name": "cookie", "scope": "/zhihu", "value": "z_c0=x", "secret": True},
-            {"name": "limit", "scope": "/twitter/user", "value": "20", "secret": False},
-            {"name": "global", "scope": "", "value": "1", "secret": False},
-        ],
-    }
+def test_expand_route_appends_access_key() -> None:
+    config = {"base_url": RSSHUB + "/", "access_key": "s3cret"}
 
-    twitter = integrations.expand_route(config, "/twitter/user/abc")
-    assert twitter.startswith(f"{RSSHUB}/twitter/user/abc?")
-    assert "limit=20" in twitter
-    assert "global=1" in twitter
-    assert "cookie" not in twitter
-    assert "key=s3cret" in twitter
-
-    # 作用范围不匹配 → 只带全局参数
-    other = integrations.expand_route(config, "/sspai/matrix")
-    assert "limit=20" not in other
-    assert "global=1" in other
+    assert integrations.expand_route(config, "/twitter/user/abc") == (
+        f"{RSSHUB}/twitter/user/abc?key=s3cret"
+    )
+    # 没填密钥就不带 query
+    assert integrations.expand_route({"base_url": RSSHUB}, "/sspai/matrix") == (
+        f"{RSSHUB}/sspai/matrix"
+    )
+    # 裸路由没带前导斜杠也归一
+    assert integrations.expand_route(config, "sspai/matrix").startswith(f"{RSSHUB}/sspai/matrix")
 
 
 def test_expand_route_requires_base_url() -> None:
@@ -486,162 +479,3 @@ def test_custom_export_test_reports_upstream_error(auth_client: TestClient) -> N
 
     assert body["ok"] is False
     assert "500" in body["message"]
-
-
-# ---------- 参数用途：拼到路由 / 传给 RSSHub ----------
-
-
-def test_expand_route_skips_env_params() -> None:
-    """凭据绝不能拼进订阅地址 —— 那会被写进 feeds.url，全库共享。"""
-    config = {
-        "base_url": RSSHUB,
-        "access_key": "",
-        "params": [
-            {"name": "PIXIV_REFRESH_TOKEN", "value": "tok", "target": "env"},
-            {"name": "limit", "scope": "/pixiv", "value": "20", "target": "query"},
-        ],
-    }
-    url = integrations.expand_route(config, "/pixiv/user/1")
-    assert "limit=20" in url
-    assert "PIXIV_REFRESH_TOKEN" not in url
-    assert "tok" not in url
-
-
-def test_normalize_params_fixes_silent_failures() -> None:
-    """作用范围漏斜杠、凭据没勾密文 —— 两种「静默失效」都在写库前归一。"""
-    normalized = integrations.normalize_params(
-        [
-            {"name": "limit", "scope": "pixiv", "value": "20"},
-            {"name": "refresh_token", "value": "t"},
-            {"name": "PIXIV_REFRESH_TOKEN", "scope": "/pixiv", "value": "t", "target": "env"},
-        ]
-    )
-    # 老数据没有 target → 按 query 走，行为不变；scope 补上斜杠，否则永远拼不上
-    assert normalized[0]["target"] == "query"
-    assert normalized[0]["scope"] == "/pixiv"
-    assert normalized[0]["secret"] is False
-    # 名字像凭据 / env 型 → 强制密文
-    assert normalized[1]["secret"] is True
-    assert normalized[2]["target"] == "env"
-    assert normalized[2]["scope"] == ""
-    assert normalized[2]["secret"] is True
-
-
-def test_masked_config_hides_credentials() -> None:
-    masked = integrations.masked_config(
-        "rsshub",
-        {
-            "access_key": "real-key-1234",
-            "params": [
-                {"name": "PIXIV_REFRESH_TOKEN", "value": "pixiv-secret", "target": "env"},
-                {"name": "github_token", "value": "gh-secret"},
-                {"name": "limit", "value": "20"},
-            ],
-        },
-    )
-    assert masked["access_key"] == "real-••••••••1234"
-    values = [item["value"] for item in masked["params"]]
-    assert "•" in values[0] and "pixiv-secret" not in values[0]
-    assert "•" in values[1] and "gh-secret" not in values[1]
-    assert values[2] == "20"  # 普通参数照旧明文
-
-
-def test_env_param_name_must_be_upper_snake(auth_client: TestClient) -> None:
-    response = auth_client.put(
-        "/api/integrations/rsshub",
-        json={
-            "rsshub": {
-                "base_url": RSSHUB,
-                "params": [{"name": "pixiv_token", "value": "x", "target": "env"}],
-            }
-        },
-    )
-    assert response.status_code == 400
-    assert "PIXIV_REFRESH_TOKEN" in response.json()["detail"]
-
-
-def test_params_are_normalized_on_write(auth_client: TestClient) -> None:
-    auth_client.put(
-        "/api/integrations/rsshub",
-        json={
-            "rsshub": {
-                "base_url": RSSHUB,
-                "params": [
-                    {"name": "limit", "scope": "pixiv", "value": "20"},
-                    {"name": "PIXIV_REFRESH_TOKEN", "value": "pixiv-secret", "target": "env"},
-                ],
-            }
-        },
-    )
-    params = auth_client.get("/api/integrations").json()["items"][0]["rsshub"]["params"]
-    assert params[0]["scope"] == "/pixiv"
-    assert params[0]["target"] == "query"
-    assert params[1]["target"] == "env"
-    assert params[1]["scope"] == ""
-    assert params[1]["secret"] is True
-    assert "•" in params[1]["value"]  # 回传仍是掩码
-
-
-def test_env_param_masked_value_is_not_stored(auth_client: TestClient) -> None:
-    """前端把掩码原样送回（改别的字段时）不能把真值抹成掩码。"""
-    auth_client.put(
-        "/api/integrations/rsshub",
-        json={
-            "rsshub": {
-                "base_url": RSSHUB,
-                "params": [{"name": "PIXIV_REFRESH_TOKEN", "value": "tok-1234", "target": "env"}],
-            }
-        },
-    )
-    masked = auth_client.get("/api/integrations").json()["items"][0]["rsshub"]["params"][0]
-    auth_client.put(
-        "/api/integrations/rsshub",
-        json={"rsshub": {"base_url": RSSHUB, "env": "CACHE_TYPE=memory", "params": [masked]}},
-    )
-
-    from app.db import SessionLocal
-
-    with SessionLocal() as session:
-        config = integrations.get_config(session, _only_user_id(session), "rsshub")
-    assert config["params"][0]["value"] == "tok-1234"
-    assert config["env"] == "CACHE_TYPE=memory"
-
-
-# ---------- RSSHub 端 env 片段 ----------
-
-
-def test_env_snippet_renders_both_forms(auth_client: TestClient) -> None:
-    auth_client.put(
-        "/api/integrations/rsshub",
-        json={
-            "rsshub": {
-                "base_url": RSSHUB,
-                "env": "CACHE_TYPE=memory, CACHE_EXPIRE=600",
-                "params": [
-                    {"name": "PIXIV_REFRESH_TOKEN", "value": "tok en", "target": "env"},
-                    {"name": "limit", "scope": "/pixiv", "value": "20"},
-                ],
-            }
-        },
-    )
-    response = auth_client.get("/api/integrations/rsshub/env-snippet")
-    assert response.status_code == 200
-    assert response.headers["cache-control"] == "no-store"
-
-    body = response.json()
-    assert body["dotenv"] == "PIXIV_REFRESH_TOKEN=tok en\nCACHE_TYPE=memory\nCACHE_EXPIRE=600"
-    # 值里有空格时交给 shlex 转义
-    assert body["docker_flags"] == (
-        "-e PIXIV_REFRESH_TOKEN='tok en' -e CACHE_TYPE=memory -e CACHE_EXPIRE=600"
-    )
-    # query 型参数是拼订阅地址的，不该混进环境变量
-    assert "limit" not in body["dotenv"]
-
-
-def test_env_snippet_is_empty_without_config(auth_client: TestClient) -> None:
-    body = auth_client.get("/api/integrations/rsshub/env-snippet").json()
-    assert body == {"dotenv": "", "docker_flags": ""}
-
-
-def test_env_snippet_requires_login(client: TestClient) -> None:
-    assert client.get("/api/integrations/rsshub/env-snippet").status_code == 401

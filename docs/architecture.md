@@ -147,10 +147,14 @@ src/lib/i18n/index.tsx  LOCALES / detectLocale / bundles / I18nProvider / useT
 
 代理（proxy_config，实例级单行）
   feed_fetch.fetch() 每跳都用 proxy.build_client(spec, url, addresses) 建客户端
-  → system: trust_env=True（环境变量里的代理不可用时降级直连并记警告）
-  → http / https: 只代理对应 scheme
-  → custom: 全部走该地址（socks5 需要 socksio）
-  → no_proxy 命中（域名 / 后缀 / CIDR）则直连
+  直连优先，连接层失败（ConnectError / ConnectTimeout / ProxyError）才换第二条路：
+  → 第一跳：direct=True（trust_env=False，不读环境变量）
+      连接超时压到 5s（读写超时不变）——被 DNS 污染/黑洞的源尽快回退
+  → 第二跳：custom → 该 scheme 的地址（socks5 需 socksio）；system → trust_env=True
+      环境里没有代理变量就不试这一跳（粗测，不解析 httpx 的 env 优先级）
+  → 读写超时（连上了只是慢）不换路，直接报「请求超时」
+  → no_proxy 命中（域名 / 后缀 / CIDR）则只直连，不回退代理
+  「测试连接」绕开这套顺序，只测第二跳（"/api/proxy/test"）
 
 自动化（automation_rules）
   触发点一（新条目）：refresh_feed() 在 upsert + 全文抽取之后

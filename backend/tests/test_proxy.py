@@ -165,6 +165,25 @@ async def test_build_client_survives_unusable_env_proxy(monkeypatch: pytest.Monk
     assert response.status_code == 200
 
 
+@pytest.mark.asyncio
+async def test_build_client_direct_ignores_spec_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """direct=True 是纯直连：既不读 spec 也不读环境变量（「直连优先」的第一跳）。"""
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:9")
+
+    def fail(*args: object, **kwargs: object) -> dict:
+        raise AssertionError("direct=True 不该去读代理配置")
+
+    monkeypatch.setattr(proxy, "client_kwargs", fail)
+    spec = proxy.ProxySpec(mode="custom", https_url="http://127.0.0.1:1")
+
+    with respx.mock:
+        respx.get("https://example.com/feed").mock(return_value=httpx.Response(200, text="ok"))
+        async with proxy.build_client(spec, "https://example.com/feed", direct=True) as client:
+            response = await client.get("https://example.com/feed")
+
+    assert response.status_code == 200
+
+
 # ---------- 描述 ----------
 
 

@@ -242,7 +242,7 @@ export const zhCN = {
     modeSystem: '系统代理',
     modeSystemHint: '使用操作系统环境变量 HTTP_PROXY / HTTPS_PROXY',
     modeCustom: '自定义代理',
-    modeCustomHint: '手动填写地址，支持 http / https / socks5，可单独设置绕过规则',
+    modeCustomHint: '手动填写地址，支持 http / https / socks5；默认先直连，连不上才走代理，可单独设置绕过规则',
     httpUrl: 'HTTP 代理',
     httpsUrl: 'HTTPS 代理',
     socks5Url: 'SOCKS5 代理',

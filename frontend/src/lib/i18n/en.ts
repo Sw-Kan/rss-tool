@@ -245,7 +245,7 @@ export const en: Strings = {
     modeSystem: 'System proxy',
     modeSystemHint: 'Use the HTTP_PROXY / HTTPS_PROXY environment variables',
     modeCustom: 'Custom proxy',
-    modeCustomHint: 'Fill in addresses manually; http / https / socks5, plus bypass rules',
+    modeCustomHint: 'Fill in addresses manually; http / https / socks5. Connects directly first and falls back to the proxy; bypass rules supported',
     httpUrl: 'HTTP proxy',
     httpsUrl: 'HTTPS proxy',
     socks5Url: 'SOCKS5 proxy',

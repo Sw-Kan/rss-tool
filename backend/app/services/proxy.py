@@ -125,16 +125,27 @@ def client_kwargs(spec: ProxySpec, url: str, addresses: list[str] | None = None)
     return {"trust_env": False, "proxy": chosen} if chosen else {"trust_env": False}
 
 
-def build_client(spec: ProxySpec, url: str, addresses: list[str] | None = None, **kwargs):
+def build_client(
+    spec: ProxySpec,
+    url: str,
+    addresses: list[str] | None = None,
+    *,
+    direct: bool = False,
+    **kwargs,
+):
     """按配置建 httpx 客户端；代理不可用时降级为直连并记警告。
+
+    `direct=True` 表示这一次请求无视 spec 与环境变量、强制直连——「直连优先，
+    连不上再走代理」的第一次尝试走的就是这条路。
 
     典型场景：系统环境里有 `ALL_PROXY=socks://...`，httpx 不认识这个 scheme 会直接抛
     ValueError。用户没碰过代理设置却所有订阅都失败，很难排查，所以这里兜住。
     """
     import httpx
 
+    chosen = {"trust_env": False} if direct else client_kwargs(spec, url, addresses)
     try:
-        return httpx.AsyncClient(**client_kwargs(spec, url, addresses), **kwargs)
+        return httpx.AsyncClient(**chosen, **kwargs)
     except Exception as exc:  # httpx 对不认识的代理 scheme / 非法地址抛 ValueError
         logger.warning("代理配置不可用（%s），本次按直连处理", exc)
         return httpx.AsyncClient(trust_env=False, **kwargs)

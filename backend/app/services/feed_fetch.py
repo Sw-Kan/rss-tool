@@ -5,12 +5,17 @@ SSRF 是信任边界，不可省：feed 内容最终会渲染给用户，若服�
 
 每跳重新建客户端，因为代理要按目标地址取舍（见 services/proxy.py）——`no_proxy` 里的
 CIDR 还需要拿解析到的 IP 来判断。
+
+代理是「直连优先，连接层失败再回退代理」：代理进程（Clash 之类）没起来的时候，
+国内源不会被同一个死代理一起拖死。命中 `NO_PROXY` 的目标只直连。
 """
 
 from __future__ import annotations
 
 import asyncio
 import ipaddress
+import logging
+import os
 import socket
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -20,8 +25,18 @@ import httpx
 from ..config import get_settings
 from . import proxy
 
+logger = logging.getLogger("rss-tool.fetch")
+
 MAX_REDIRECTS = 5
 REDIRECT_CODES = (301, 302, 303, 307, 308)
+
+# 直连那一跳的连接超时上限（秒）：被 DNS 污染 / 黑洞的源最多多等这么久就回退代理。
+# 只压连接阶段，读 / 写超时照旧，慢源不会被误杀。
+_DIRECT_CONNECT_TIMEOUT = 5.0
+# system 模式靠这几个变量判断有没有值得试的第二条路
+_ENV_PROXY_KEYS = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY")
+# 连接层失败才换路：连接被拒 / RST / TLS 失败 / 代理端口没人听
+_CONNECT_FAILURES = (httpx.ConnectError, httpx.ConnectTimeout, httpx.ProxyError)
 
 
 class FetchError(Exception):
@@ -68,6 +83,46 @@ def check_url_allowed(url: str) -> list[str]:
     return addresses
 
 
+def _env_proxy_configured() -> bool:
+    """环境里是否配了代理（决定 system 模式要不要试第二条路）。
+
+    # ponytail: 只做粗略探测（大小写各查一遍，不处理 NO_PROXY 优先级）。误判为「有」
+    # 最多让同一次请求多试一遍直连；要精确就得复刻 httpx 的 env 解析，不值。
+    """
+    return any(os.environ.get(name) or os.environ.get(name.lower()) for name in _ENV_PROXY_KEYS)
+
+
+def _attempt_paths(spec: proxy.ProxySpec, url: str, addresses: list[str] | None) -> list[bool]:
+    """本次请求按顺序走哪些路：False = 直连，True = 走配置 / 环境里的代理。
+
+    代理进程没起来时，若一上来就走代理，国内源会被同一个死代理一起拖死，所以直连优先。
+    命中 NO_PROXY 则只直连——用户明确说了这个目标别走代理，替他回退到代理是反着来。
+    """
+    host = (urlparse(url).hostname or "").lower()
+    if proxy.bypass(spec, host, addresses or []):
+        return [False]
+    if spec.mode == "system":
+        return [False, True] if _env_proxy_configured() else [False]
+    return [False, True] if proxy.proxy_for(spec, urlparse(url).scheme) else [False]
+
+
+def _hop_timeout(read: float, *, direct: bool) -> float | httpx.Timeout:
+    """直连那一跳把连接超时压短，读写超时不变；代理那一跳用完整超时。"""
+    if not direct:
+        return read
+    return httpx.Timeout(read, connect=min(_DIRECT_CONNECT_TIMEOUT, read))
+
+
+def _failure(last: Exception, *, tried_proxy: bool, bypassed: bool) -> FetchError:
+    """两路都试完之后给用户的报错。只报最后一次异常，不堆叠。"""
+    head = "请求超时" if isinstance(last, httpx.TimeoutException) else f"请求失败：{last}"
+    if tried_proxy:
+        return FetchError(f"{head}（直连与代理都不通）")
+    if bypassed:
+        return FetchError(f"{head}（NO_PROXY 命中，未尝试代理；该源可能需要代理）")
+    return FetchError(f"{head}；该源可能需要代理，可在「设置 → 代理」里配置")
+
+
 async def fetch(
     url: str,
     *,
@@ -79,8 +134,8 @@ async def fetch(
     proxy_spec: proxy.ProxySpec | None = None,
     referer: str | None = None,
 ) -> FetchResult:
-    settings = get_settings()
     spec = proxy_spec if proxy_spec is not None else proxy.ProxySpec()
+    settings = get_settings()
     headers = {
         "User-Agent": settings.fetch_user_agent,
         "Accept": accept
@@ -99,16 +154,40 @@ async def fetch(
     current = url
     for _ in range(MAX_REDIRECTS + 1):
         addresses = await asyncio.to_thread(check_url_allowed, current)
-        client = proxy.build_client(
-            spec, current, addresses, timeout=request_timeout, follow_redirects=False
-        )
-        async with client:
-            try:
-                response = await client.get(current, headers=headers)
-            except httpx.TimeoutException as exc:
-                raise FetchError("请求超时") from exc
-            except httpx.HTTPError as exc:
-                raise FetchError(f"请求失败：{exc}") from exc
+        bypassed = proxy.bypass(spec, (urlparse(current).hostname or "").lower(), addresses)
+        paths = _attempt_paths(spec, current, addresses)
+        response: httpx.Response | None = None
+        last: Exception | None = None
+        for index, use_proxy in enumerate(paths):
+            client = proxy.build_client(
+                spec,
+                current,
+                addresses,
+                direct=not use_proxy,
+                timeout=_hop_timeout(request_timeout, direct=not use_proxy),
+                follow_redirects=False,
+            )
+            async with client:
+                try:
+                    response = await client.get(current, headers=headers)
+                    break
+                except _CONNECT_FAILURES as exc:
+                    last = exc
+                    if index + 1 < len(paths):
+                        logger.warning(
+                            "%s连不上（%s），改走%s重试 %s",
+                            "直连" if not use_proxy else "代理",
+                            exc,
+                            "代理" if not use_proxy else "直连",
+                            current,
+                        )
+                except httpx.TimeoutException as exc:  # 连上了只是慢，换路没意义
+                    raise FetchError("请求超时") from exc
+                except httpx.HTTPError as exc:
+                    raise FetchError(f"请求失败：{exc}") from exc
+        if response is None:
+            assert last is not None  # paths 恒非空，走到这里必然捕获过一个异常
+            raise _failure(last, tried_proxy=len(paths) > 1, bypassed=bypassed)
 
         if response.status_code in REDIRECT_CODES:
             location = response.headers.get("location")
